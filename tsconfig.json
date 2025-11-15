@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "target": "ES2019",
+    "module": "CommonJS",
+    "esModuleInterop": true,
+    "strict": false,
+    "outDir": "dist",
+    "resolveJsonModule": true,
+    "moduleResolution": "node",
+    "skipLibCheck": true
+  },
+  "include": ["backend/**/*.ts"],
+  "exclude": ["node_modules"]
+}

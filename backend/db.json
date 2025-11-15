@@ -1,0 +1,40 @@
+{
+  "users": [
+    {
+      "id": "user_1763123208580",
+      "email": "employee@company.com",
+      "name": "John Doe",
+      "passwordHash": "$2b$10$xL8x/J4IVV/76yT85Ydpzu3fNdd0QKQxxSWl8G7/HyQ1gUx7OtxXq",
+      "companyId": "comp_1763123208580",
+      "role": "Accountant",
+      "status": "Active",
+      "failedAttempts": 0,
+      "lockedUntil": null
+    },
+    {
+      "id": "user_1763123557803",
+      "email": "3153520738@qq.com",
+      "name": "QQ",
+      "passwordHash": "$2b$10$4CF2euxY.uxpS/V5XvRfk.dYgKOKhCqdOZHolMK715jwmzuqytCjC",
+      "companyId": "comp_1763123557803",
+      "role": "Owner",
+      "status": "Active",
+      "failedAttempts": 0,
+      "lockedUntil": null
+    }
+  ],
+  "companies": [
+    {
+      "id": "comp_1763123208580",
+      "name": "Existing Corp",
+      "has_account_book": true
+    },
+    {
+      "id": "comp_1763123557803",
+      "name": "QQ",
+      "has_account_book": false
+    }
+  ],
+  "invitations": [],
+  "passwordResets": []
+}
