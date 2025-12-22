@@ -2,8 +2,7 @@
 // 核心 HTTP 请求封装
 // ============================================================================
 
-const API_PREFIX = 'http://localhost:4000'; 
-
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
 // 处理 HTTP 响应的通用逻辑
 const handleResponse = async (res: Response) => {
   const data = await res.json().catch(() => ({}));
@@ -22,7 +21,7 @@ const handleResponse = async (res: Response) => {
 
 // GET 请求
 export const get = async (url: string) => {
-  const res = await fetch(`${API_PREFIX}${url}`, { 
+  const res = await fetch(`${API_BASE}${url}`, { 
     method: 'GET',
     credentials: 'include' // 必须加这一行，允许携带 Cookie
   });
@@ -31,7 +30,7 @@ export const get = async (url: string) => {
 
 // POST 请求
 export const post = async (url: string, body?: any) => {
-  const res = await fetch(`${API_PREFIX}${url}`, {
+  const res = await fetch(`${API_BASE}${url}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include', // 必须加这一行
@@ -42,7 +41,7 @@ export const post = async (url: string, body?: any) => {
 
 // PUT 请求
 export const put = async (url: string, body?: any) => {
-  const res = await fetch(`${API_PREFIX}${url}`, {
+  const res = await fetch(`${API_BASE}${url}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include', // 必须加这一行
@@ -53,7 +52,7 @@ export const put = async (url: string, body?: any) => {
 
 // DELETE 请求
 export const del = async (url: string) => {
-  const res = await fetch(`${API_PREFIX}${url}`, { 
+  const res = await fetch(`${API_BASE}${url}`, { 
     method: 'DELETE',
     credentials: 'include' // 必须加这一行
   });

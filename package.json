@@ -13,6 +13,7 @@
     "bcrypt": "^6.0.0",
     "bcryptjs": "^3.0.3",
     "cmdk": "^1.1.1",
+    "dotenv": "^17.2.3",
     "exceljs": "^4.4.0",
     "lowdb": "^7.0.1",
     "lucide-react": "^0.553.0",

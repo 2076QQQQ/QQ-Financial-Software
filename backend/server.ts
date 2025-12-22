@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import bodyParser from 'body-parser';
@@ -7,7 +8,7 @@ import bcrypt from 'bcryptjs';
 import nodemailer from 'nodemailer';
 
 const app = express();
-const PORT = 4000;
+const PORT = process.env.PORT || 4000;
 
 // 1. 配置中间件
 app.use(cors({
@@ -2533,10 +2534,10 @@ app.delete('/api/closing-templates/:id', requireAuth, (req: any, res) => {
 // ==========================================
 const transporter = nodemailer.createTransport({
   service: 'qq',
-  secure: true, // QQ 建议使用 SSL
+  secure: true,
   auth: {
-    user: '3153520738@qq.com', // 你的发送方邮箱
-    pass: 'erpqshxyvrhgdfgg'     // 你的授权码
+    user: process.env.EMAIL_USER, 
+    pass: process.env.EMAIL_PASS  
   }
 });
 

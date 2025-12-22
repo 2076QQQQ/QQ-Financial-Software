@@ -4,7 +4,7 @@
 // 修改说明：已全面支持多账套隔离，核心接口强制要求传入 bookId
 // ------------------------------------------------------------------
 
-const API_BASE = 'http://localhost:4000/api';
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
 
 interface CustomRequestInit extends Omit<RequestInit, 'body'> {
   body?: any;
@@ -988,23 +988,10 @@ export const resetConfirm = async (token: string, password: string) => {
 // ==========================================
 
 export const registerCompany = async (formData: any) => {
-  console.log('Mock/API Call: registerCompany', formData);
-  
-  // ✅ 关键：这里需要发起对后端 API 的调用
-  const response = await fetch('http://localhost:4000/api/auth/register-company', {
-      method: 'POST',
-      headers: {
-          'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(formData),
+  // ✅ 修复：使用 client 函数，自动适配环境变量地址 (Render/Vercel)
+  return client('/auth/register-company', {
+      body: formData,
   });
-
-  if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.message || '注册失败');
-  }
-
-  return response.json();
 };
 // ==========================================
 // 20. 现金流量表 API (新增)
