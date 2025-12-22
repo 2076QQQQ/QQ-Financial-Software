@@ -1,96 +1,168 @@
-import { Low } from 'lowdb';
-import { JSONFile } from 'lowdb/node';
-import bcrypt from 'bcryptjs';
+// database.ts
 
-// Define the structure of our database
-interface User {
-  id: string;
-  email: string;
-  name: string;
-  passwordHash: string;
-  companyId: string;
-  role: 'Admin' | 'Owner' | 'Accountant' | 'Cashier';
-  status: 'Pending' | 'Active';
-  failedAttempts?: number;
-  lockedUntil?: string | null;
+import fs from 'fs';
+import path from 'path';
+
+// 定义数据库结构类型 (Database Schema Definition)
+export interface DatabaseSchema {
+  users: any[];
+  companies: any[];
+  invitations: any[];
+  passwordResets: any[];
+  accountBooks: any[];        // 账套信息 (UC01)
+  subjects: any[];            // 会计科目 (UC02)
+  fundAccounts: any[];        // 资金账户 (UC09)
+  auxiliaryCategories: any[]; // 辅助核算维度 (UC03)
+  auxiliaryItems: any[];      // 辅助核算项目 (UC03)
+  auxiliaryTypes: any[];      // 辅助核算类别 (UC03, 预留)
+  initialBalances: any[];     // 期初余额记录 (UC04)
+  companyInfo: any;
+  vouchers: any[];            // 凭证表 (UC06)
+  voucherTemplates: any[];    // 凭证模板表 (UC05)
+  closingTemplates: any[];
+  // ★★★ 新增业务模块存储 ★★★
+  journalEntries: any[];      // 出纳日记账流水 (UC11)
+  expenseCategories: any[];   // 收支类别映射 (UC10)
+  internalTransfers: any[];   // 内部转账记录 (UC12)
 }
 
-interface Company {
-  id: string;
-  name: string;
-  has_account_book: boolean;
-}
+// 数据库文件路径
+const DB_PATH = path.join(__dirname, 'db.json');
 
-interface Invitation {
-  id: string;
-  token: string;
-  email: string;
-  companyId: string;
-  role: 'Admin' | 'Owner' | 'Accountant' | 'Cashier';
-  isAdmin: boolean;
-  invitedBy: string;
-  status: 'pending' | 'activated' | 'expired';
-  expiresAt: string;
-  createdAt: string;
-}
-
-interface PasswordReset {
-  id: string;
-  token: string;
-  userId: string;
-  expiresAt: string;
-  consumed: boolean;
-  createdAt: string;
-}
-
-interface DbData {
-  users: User[];
-  companies: Company[];
-  invitations: Invitation[];
-  passwordResets: PasswordReset[];
-}
-
-// Configure the database to use a JSON file for storage
-const adapter = new JSONFile<DbData>('backend/db.json');
-const defaultData: DbData = { users: [], companies: [], invitations: [], passwordResets: [] };
-const db = new Low(adapter, defaultData);
-
-// Function to initialize the database
-export const initDb = async () => {
-  await db.read();
-  // If the database file doesn't exist, write the default data
-  if (db.data === null) {
-    db.data = defaultData;
-    await db.write();
-  }
-
-  // Pre-populate with a sample user for Scene 2 (existing employee)
-  if (db.data.users.length === 0) {
-    const salt = await bcrypt.genSalt(10);
-    const passwordHash = await bcrypt.hash('password123', salt);
-    
-    const companyId = `comp_${Date.now()}`;
-
-    db.data.companies.push({
-      id: companyId,
-      name: 'Existing Corp',
-      has_account_book: true,
-    });
-
-    db.data.users.push({
-      id: `user_${Date.now()}`,
-      email: 'employee@company.com',
-      name: 'John Doe',
-      passwordHash: passwordHash,
-      companyId: companyId,
-      role: 'Accountant',
-      status: 'Active',
-      failedAttempts: 0,
-      lockedUntil: null,
-    });
-
-    await db.write();
-  }
+// 默认空数据结构
+const defaultData: DatabaseSchema = {
+  users: [],
+  companies: [],
+  invitations: [],
+  passwordResets: [],
+  accountBooks: [],
+  subjects: [],
+  fundAccounts: [],
+  auxiliaryCategories: [], // 辅助核算维度 (UC03)
+  auxiliaryItems: [],
+  auxiliaryTypes: [],
+  initialBalances: [],
+  companyInfo: {},
+  vouchers: [],
+  voucherTemplates: [],
+  closingTemplates: [],
+  
+  journalEntries: [],
+  expenseCategories: [],
+  internalTransfers: []
 };
 
-export default db;
+/**
+ * 模拟文件数据库的单例类
+ */
+export class DB {
+  private data: DatabaseSchema;
+
+  constructor() {
+    this.data = defaultData;
+  }
+
+  // 初始化数据库
+  public async init() {
+    if (!fs.existsSync(DB_PATH)) {
+      this.data = defaultData;
+      this.save();
+      console.log('🆕 Database file created at:', DB_PATH);
+    } else {
+      try {
+        const raw = fs.readFileSync(DB_PATH, 'utf-8');
+        const loadedData = JSON.parse(raw);
+        // 容错处理：确保读取的数据包含最新的默认字段
+        this.data = { ...defaultData, ...loadedData };
+      } catch (e) {
+        console.error('❌ Database load error, resetting to default:', e);
+        this.data = defaultData;
+        this.save();
+      }
+    }
+  }
+
+  // 保存数据到磁盘
+  private save() {
+    try {
+      fs.writeFileSync(DB_PATH, JSON.stringify(this.data, null, 2), 'utf-8');
+    } catch (e) {
+      console.error('❌ Failed to save database:', e);
+    }
+  }
+
+  // 获取全量数据
+  public get(): DatabaseSchema {
+    return this.data;
+  }
+
+  /**
+   * 通用更新方法
+   */
+  public update(key: keyof DatabaseSchema, value: any[]) {
+    (this.data as any)[key] = value;
+    this.save();
+  }
+
+  /**
+   * ★★★ 核心业务方法：删除凭证并解锁关联流水 ★★★
+   * 这个方法必须放在这里，因为它涉及多个表的原子性修改
+   */
+  public deleteVoucher(id: string): boolean {
+    console.log(`[DB] 尝试删除凭证，ID: ${id}`);
+
+    // 1. 查找凭证
+    const voucherIndex = this.data.vouchers.findIndex(v => v.id === id);
+    if (voucherIndex === -1) {
+      console.log(`[DB] ❌ 没找到凭证，ID: ${id}`);
+      return false;
+    }
+
+    const voucher = this.data.vouchers[voucherIndex];
+    const targetCode = voucher.voucherCode; // 例如 "记-001"
+    
+    console.log(`[DB] 准备删除凭证: ${targetCode}，并清理关联的日记账...`);
+
+    // 2. 删除凭证
+    this.data.vouchers.splice(voucherIndex, 1);
+
+    // 3. 解锁日记账 (Journal Entries)
+    let unlockedJournalCount = 0;
+    if (targetCode && this.data.journalEntries) {
+      this.data.journalEntries = this.data.journalEntries.map(entry => {
+        if (entry.voucherCode === targetCode) {
+          unlockedJournalCount++;
+          // 关键：置空 voucherCode，即解锁
+          return { ...entry, voucherCode: null }; 
+        }
+        return entry;
+      });
+    }
+
+    // 4. 解锁内部转账单 (Internal Transfers)
+    let unlockedTransferCount = 0;
+    if (targetCode && this.data.internalTransfers) {
+        this.data.internalTransfers = this.data.internalTransfers.map(tr => {
+            if (tr.voucherCode === targetCode) {
+                unlockedTransferCount++;
+                return { ...tr, voucherCode: null };
+            }
+            return tr;
+        });
+    }
+
+    console.log(`[DB] ✅ 成功删除凭证。解锁流水: ${unlockedJournalCount} 条, 解锁转账单: ${unlockedTransferCount} 条`);
+
+    // 5. 保存文件
+    this.save();
+    return true;
+  }
+}
+
+// 导出单例
+export const db = new DB();
+
+// 初始化函数
+export const initDb = async () => {
+  await db.init();
+};

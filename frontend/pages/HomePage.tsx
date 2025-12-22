@@ -1,8 +1,19 @@
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/router'; 
+import FundAnalysis from './app/[bookId]/dashboard/FundAnalysis'; // 确保路径正确
+
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';      
-import { Bell, FileText, TrendingUp, Clock, ChevronRight, AlertCircle, CheckCircle2, ArrowRight, DollarSign, ArrowUpCircle, ArrowDownCircle, BookOpen } from 'lucide-react';
-import { getPendingVouchersCount, getUnclassifiedCount, getCurrentBalance } from '../lib/mockData';
+import { Badge } from '@/components/ui/badge';
+import { 
+  AlertCircle, CheckCircle2, ArrowRight, BookOpen, Loader2, 
+  TrendingUp, TrendingDown, Wallet, PieChart
+} from 'lucide-react';
+import { 
+  getAllVouchers, 
+  getJournalEntries, 
+  getFundAccounts 
+} from '@/lib/mockData';
 
 interface HomePageProps {
   onNavigate: (path: string) => void;
@@ -15,126 +26,144 @@ interface HomePageProps {
 }
 
 export default function HomePage({ onNavigate, setupStatus }: HomePageProps) {
-  // 检查是否完全解锁
-  const isFullyUnlocked = setupStatus?.hasAccountBook && 
+  const router = useRouter();
+  const { bookId } = router.query; 
+
+  const [loading, setLoading] = useState(false);
+  
+  // 核心财务数据 (损益口径)
+  const [pnlData, setPnlData] = useState({
+    revenue: 0,
+    expense: 0,
+    netProfit: 0
+  });
+
+  const [todoItems, setTodoItems] = useState({
+    pendingVouchers: 0,
+    unclassifiedTransactions: 0,
+    accountsToReconcile: 0 
+  });
+
+  // 图表数据 (仍然使用现金流数据，因为这是"资金概览"图表)
+  const [chartDataRaw, setChartDataRaw] = useState({
+    entries: [] as any[],
+    monthStartBalance: 0 
+  });
+
+  const isFullyUnlocked = 
+    setupStatus?.hasAccountBook && 
     setupStatus?.hasSubjects && 
     setupStatus?.hasFundAccounts && 
     setupStatus?.hasInitialBalances;
 
-  // 如果未完全解锁，显示设置向导
-  if (!isFullyUnlocked) {
-    return (
-      <div className="space-y-6">
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
-          <h2 className="text-blue-900 mb-2">欢迎使用财务管理系统！</h2>
-          <p className="text-blue-700 mb-4">
-            请完成以下4步设置向导，开启您的财务管理之旅
-          </p>
-          
-          <div className="space-y-3">
-            {/* 步骤1：会计科目 */}
-            <Card className={`p-4 ${setupStatus?.hasSubjects ? 'bg-green-50 border-green-200' : 'bg-white'}`}>
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-gray-900">步骤1：会计科目设置</h3>
-                  <p className="text-sm text-gray-600">设置企业会计科目体系</p>
-                </div>
-                {setupStatus?.hasSubjects ? (
-                  <Badge className="bg-green-600">已完成</Badge>
-                ) : (
-                  <Button onClick={() => onNavigate('/settings/subjects')}>
-                    前往设置
-                    <ArrowRight className="w-4 h-4 ml-2" />
-                  </Button>
-                )}
-              </div>
-            </Card>
+  useEffect(() => {
+    if (router.isReady && bookId && isFullyUnlocked) {
+      loadDashboardData();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [setupStatus, router.isReady, bookId]); 
 
-            {/* 步骤2：辅助核算 */}
-            <Card className={`p-4 ${setupStatus?.hasSubjects ? 'bg-white' : 'bg-gray-50'}`}>
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className={setupStatus?.hasSubjects ? 'text-gray-900' : 'text-gray-500'}>
-                    步骤2：辅助核算项目
-                  </h3>
-                  <p className="text-sm text-gray-600">设置客户、供应商等</p>
-                </div>
-                {setupStatus?.hasSubjects ? (
-                  <Button onClick={() => onNavigate('/settings/auxiliary')}>
-                    前往设置
-                    <ArrowRight className="w-4 h-4 ml-2" />
-                  </Button>
-                ) : (
-                  <Badge variant="outline">待解锁</Badge>
-                )}
-              </div>
-            </Card>
+  const loadDashboardData = async () => {
+    const currentBookId = Array.isArray(bookId) ? bookId[0] : bookId;
+    if (!currentBookId) return;
 
-            {/* 步骤3：资金账户 */}
-            <Card className={`p-4 ${setupStatus?.hasFundAccounts ? 'bg-green-50 border-green-200' : setupStatus?.hasSubjects ? 'bg-white' : 'bg-gray-50'}`}>
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className={setupStatus?.hasSubjects ? 'text-gray-900' : 'text-gray-500'}>
-                    步骤3：资金账户设置
-                  </h3>
-                  <p className="text-sm text-gray-600">设置现金、银行账户</p>
-                </div>
-                {setupStatus?.hasFundAccounts ? (
-                  <Badge className="bg-green-600">已完成</Badge>
-                ) : setupStatus?.hasSubjects ? (
-                  <Button onClick={() => onNavigate('/settings/fund-accounts')}>
-                    前往设置
-                    <ArrowRight className="w-4 h-4 ml-2" />
-                  </Button>
-                ) : (
-                  <Badge variant="outline">待解锁</Badge>
-                )}
-              </div>
-            </Card>
+    setLoading(true);
+    try {
+      const [vouchers, entries, accounts] = await Promise.all([
+        getAllVouchers(currentBookId),
+        getJournalEntries(currentBookId), 
+        getFundAccounts(currentBookId)
+      ]);
 
-            {/* 步骤4：期初数据 */}
-            <Card className={`p-4 ${setupStatus?.hasInitialBalances ? 'bg-green-50 border-green-200' : setupStatus?.hasFundAccounts ? 'bg-white' : 'bg-gray-50'}`}>
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className={setupStatus?.hasFundAccounts ? 'text-gray-900' : 'text-gray-500'}>
-                    步骤4：期初数据录入
-                  </h3>
-                  <p className="text-sm text-gray-600">录入期初余额数据</p>
-                </div>
-                {setupStatus?.hasInitialBalances ? (
-                  <Badge className="bg-green-600">已完成</Badge>
-                ) : setupStatus?.hasFundAccounts ? (
-                  <Button onClick={() => onNavigate('/settings/initial-data')}>
-                    前往设置
-                    <ArrowRight className="w-4 h-4 ml-2" />
-                  </Button>
-                ) : (
-                  <Badge variant="outline">待解锁</Badge>
-                )}
-              </div>
-            </Card>
-          </div>
-        </div>
-      </div>
-    );
-  }
+      // 确定本月范围 (例如 2025-12)
+      const now = new Date();
+      // 这里为了演示你的数据，强制设为 2025-12。实际使用请用 now.getMonth() + 1
+      const currentMonthPrefix = "2025-12"; 
+      
+      // ==========================================
+      // 1. 计算损益 (Profit & Loss) - 核心逻辑
+      // ==========================================
+      let totalRevenue = 0;
+      let totalExpense = 0;
 
-  // 完全解锁后显示工作台
-  // 从全局数据获取实时资金数据
-  // BR2: 总期末余额 = 所有UC09资金账户的期初余额 + UC11日记账流水累计
-  // 数据来源：UC11出纳日记账（不依赖UC06凭证或UC07审核状态）
-  const balanceData = getCurrentBalance();
-  const financialData = {
-    totalBalance: balanceData.totalBalance,  // 总期末余额（期初 + 流入 - 流出）
-    totalInflow: balanceData.totalInflow,    // 本期流入总额
-    totalOutflow: balanceData.totalOutflow,  // 本期流出总额
-  };
+      const validVouchers = (vouchers || []).filter((v: any) => 
+        v.status === 'approved' && 
+        v.voucherDate.startsWith(currentMonthPrefix) &&
+        v.closingType !== 'profit' // ★ 关键：排除结转损益的凭证，否则余额为0
+      );
 
-  // 待办事项数据（实时从数据库获取）
-  const todoItems = {
-    pendingVouchers: getPendingVouchersCount(),        // 待审核凭证（必须等于UC06中状态为"未审核"的凭证总数）
-    unclassifiedTransactions: getUnclassifiedCount(), // 未分类流水
-    accountsToReconcile: 0      // 资金待核对（TODO: 需要从实际核对数据中计算）
+      validVouchers.forEach((v: any) => {
+        v.lines.forEach((line: any) => {
+          const code = String(line.subjectCode);
+          const debit = Number(line.debitAmount || 0);
+          const credit = Number(line.creditAmount || 0);
+
+          // 收入类：6001, 6051, 6301 (贷方增加)
+          if (['6001', '6051', '6111', '6301'].some(p => code.startsWith(p))) {
+             totalRevenue += (credit - debit);
+          }
+
+          // 支出类：6401, 6403, 6601, 6602, 6603, 6711, 6801 (借方增加)
+          // 注意：排除 60xx, 61xx, 63xx 剩下的 6 开头基本都是支出
+          if (/^6[4-9]/.test(code)) {
+             totalExpense += (debit - credit);
+          }
+        });
+      });
+
+      setPnlData({
+        revenue: totalRevenue,
+        expense: totalExpense,
+        netProfit: totalRevenue - totalExpense
+      });
+
+      // ==========================================
+      // 2. 准备图表数据 (Cash Flow)
+      // ==========================================
+      // 图表依然展示“资金”变动，因为老板也想看银行卡里钱的走势
+      const currentBookEntries = (entries || []).filter((e: any) => e.accountBookId === currentBookId);
+      
+      // 计算本月期初余额 (用于画图起点)
+      // 逻辑：所有账户初始余额 + 历史(本月前)净流水
+      const initialSetupBalance = (accounts || []).reduce((sum: number, acc: any) => sum + Number(acc.initialBalance || 0), 0);
+      
+      let historyNetChange = 0;
+      const monthEntries: any[] = [];
+
+      currentBookEntries.forEach((e: any) => {
+        const date = e.date;
+        const inc = Number(e.income || 0);
+        const exp = Number(e.expense || 0);
+
+        if (date < `${currentMonthPrefix}-01`) {
+            historyNetChange += (inc - exp);
+        } else if (date.startsWith(currentMonthPrefix)) {
+            monthEntries.push(e);
+        }
+      });
+
+      setChartDataRaw({
+        entries: monthEntries,
+        monthStartBalance: initialSetupBalance + historyNetChange
+      });
+
+      // ==========================================
+      // 3. 待办事项
+      // ==========================================
+      const pendingCount = (vouchers || []).filter((v: any) => v.status !== 'approved').length;
+      const unclassifiedCount = currentBookEntries.filter((e: any) => !e.categoryId).length;
+
+      setTodoItems({
+        pendingVouchers: pendingCount,
+        unclassifiedTransactions: unclassifiedCount,
+        accountsToReconcile: (accounts || []).length 
+      });
+
+    } catch (e) {
+      console.error("加载数据失败", e);
+    } finally {
+      setLoading(false);
+    }
   };
 
   // 计算距离月底天数
@@ -142,213 +171,142 @@ export default function HomePage({ onNavigate, setupStatus }: HomePageProps) {
   const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
   const daysUntilMonthEnd = lastDayOfMonth.getDate() - today.getDate();
 
+  if (!isFullyUnlocked) {
+      return <div className="p-10 text-center text-gray-500">系统初始化未完成</div>;
+  }
+
   return (
-    <div className="space-y-8">
-      {/* 顶部：实时资金概览 */}
+    <div className="space-y-8 max-w-[1600px] mx-auto p-6">
+      
+      {/* 1. 顶部：经营成果 (损益口径) */}
       <section>
         <div className="flex items-center gap-2 mb-4">
-          <DollarSign className="w-6 h-6 text-blue-600" />
-          <h2 className="text-gray-900">实时资金概览</h2>
-          <span className="text-sm text-gray-500">(本月至今)</span>
+          <PieChart className="w-6 h-6 text-indigo-600" />
+          <h2 className="text-xl font-bold text-gray-900">本月经营成果</h2>
+          <Badge variant="outline" className="text-indigo-600 border-indigo-200 bg-indigo-50 ml-2">
+             损益口径 (权责发生制)
+          </Badge>
+          {loading && <Loader2 className="w-4 h-4 animate-spin text-gray-400"/>}
         </div>
 
         <div className="grid grid-cols-3 gap-6">
-          {/* 总期末余额 */}
-          <Card 
-            className="p-6 cursor-pointer hover:shadow-lg transition-shadow"
-            onClick={() => onNavigate('/funds/summary')}
-          >
+          {/* 总收入 */}
+          <Card className="p-6 border-t-4 border-t-emerald-500 shadow-sm">
             <div className="space-y-2">
-              <p className="text-sm text-gray-600">总期末余额</p>
-              <p className="text-3xl text-blue-600">
-                ¥{financialData.totalBalance.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              <div className="flex items-center gap-2 text-emerald-700">
+                <TrendingUp className="w-5 h-5" />
+                <p className="text-sm font-bold">总收入 (Revenue)</p>
+              </div>
+              <p className="text-3xl font-bold text-emerald-800 font-mono">
+                ¥ {pnlData.revenue.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}
               </p>
-              <p className="text-xs text-gray-500">点击查看资金汇总表明细</p>
+              <p className="text-xs text-emerald-600 opacity-80">
+                主营业务 + 其他业务 + 营业外
+              </p>
             </div>
           </Card>
 
-          {/* 本期流入总额 */}
-          <Card 
-            className="p-6 cursor-pointer hover:shadow-lg transition-shadow"
-            onClick={() => onNavigate('/funds/summary')}
-          >
+          {/* 总支出 */}
+          <Card className="p-6 border-t-4 border-t-rose-500 shadow-sm">
             <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <ArrowUpCircle className="w-4 h-4 text-green-600" />
-                <p className="text-sm text-gray-600">本期流入总额</p>
+              <div className="flex items-center gap-2 text-rose-700">
+                <TrendingDown className="w-5 h-5" />
+                <p className="text-sm font-bold">总支出 (Expense)</p>
               </div>
-              <p className="text-3xl text-green-600">
-                ¥{financialData.totalInflow.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              <p className="text-3xl font-bold text-rose-800 font-mono">
+                ¥ {pnlData.expense.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}
               </p>
-              <p className="text-xs text-gray-500">点击查看收入明细</p>
+              <p className="text-xs text-rose-600 opacity-80">
+                成本 + 税金 + 三费 + 所得税
+              </p>
             </div>
           </Card>
 
-          {/* 本期流出总额 */}
-          <Card 
-            className="p-6 cursor-pointer hover:shadow-lg transition-shadow"
-            onClick={() => onNavigate('/funds/summary')}
-          >
+          {/* 净利润 */}
+          <Card className={`p-6 border-t-4 shadow-sm ${pnlData.netProfit >= 0 ? 'border-t-blue-500' : 'border-t-orange-500'}`}>
             <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <ArrowDownCircle className="w-4 h-4 text-red-600" />
-                <p className="text-sm text-gray-600">本期流出总额</p>
+              <div className="flex items-center gap-2 text-blue-700">
+                <Wallet className="w-5 h-5" />
+                <p className="text-sm font-bold">净利润 (Net Profit)</p>
               </div>
-              <p className="text-3xl text-red-600">
-                ¥{financialData.totalOutflow.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              <p className={`text-3xl font-bold font-mono ${pnlData.netProfit >= 0 ? 'text-blue-800' : 'text-orange-600'}`}>
+                {pnlData.netProfit >= 0 ? '+' : ''} 
+                ¥ {pnlData.netProfit.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}
               </p>
-              <p className="text-xs text-gray-500">点击查看支出明细</p>
+              <p className="text-xs text-blue-600 opacity-80">
+                总收入 - 总支出
+              </p>
             </div>
           </Card>
         </div>
       </section>
 
-      {/* 中部：待办事项与流程指引 */}
-      <section>
-        <div className="flex items-center gap-2 mb-4">
-          <AlertCircle className="w-6 h-6 text-orange-600" />
-          <h2 className="text-gray-900">待办事项</h2>
-        </div>
-
-        <div className="grid grid-cols-3 gap-6">
-          {/* 待审核凭证 */}
-          <Card className="p-6">
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <p className="text-sm text-gray-600">待审核凭证</p>
-                {todoItems.pendingVouchers > 0 && (
-                  <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100">
-                    {todoItems.pendingVouchers} 张
-                  </Badge>
-                )}
-              </div>
-              <p className="text-2xl">{todoItems.pendingVouchers}</p>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                className="w-full"
-                onClick={() => onNavigate('/vouchers/management')}
-              >
-                去审核
-                <ArrowRight className="w-4 h-4 ml-2" />
-              </Button>
-            </div>
-          </Card>
-
-          {/* 未分类流水 */}
-          <Card className="p-6">
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <p className="text-sm text-gray-600">未分类流水</p>
-                {todoItems.unclassifiedTransactions > 0 && (
-                  <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100">
-                    {todoItems.unclassifiedTransactions} 笔
-                  </Badge>
-                )}
-              </div>
-              <p className="text-2xl">{todoItems.unclassifiedTransactions}</p>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                className="w-full"
-                onClick={() => onNavigate('/funds/journal')}
-              >
-                去分类
-                <ArrowRight className="w-4 h-4 ml-2" />
-              </Button>
-            </div>
-          </Card>
-
-          {/* 资金待核对 */}
-          <Card className="p-6">
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <p className="text-sm text-gray-600">资金待核对</p>
-                {todoItems.accountsToReconcile > 0 && (
-                  <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100">
-                    {todoItems.accountsToReconcile} 个账户
-                  </Badge>
-                )}
-              </div>
-              <p className="text-2xl">{todoItems.accountsToReconcile}</p>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                className="w-full"
-                onClick={() => onNavigate('/ledgers/reconciliation')}
-              >
-                去核对
-                <ArrowRight className="w-4 h-4 ml-2" />
-              </Button>
-            </div>
-          </Card>
-        </div>
+      {/* 2. 中部：图表分析 (资金口径) */}
+      <section className="mb-8">
+         <FundAnalysis 
+            entries={chartDataRaw.entries} 
+            initialTotal={chartDataRaw.monthStartBalance} 
+         />
       </section>
 
-      {/* 底部：核心功能快捷入口 */}
-      <section>
-        <h2 className="text-gray-900 mb-4">核心功能快捷入口</h2>
-
-        <div className="grid grid-cols-2 gap-6">
-          {/* 左侧：日常流水操作 */}
-          <Card className="p-6">
-            <h3 className="text-gray-900 mb-4">日常流水操作</h3>
-            <div className="space-y-3">
-              <Button 
-                variant="outline" 
-                className="w-full justify-start"
-                onClick={() => onNavigate('/funds/journal')}
-              >
-                <FileText className="w-4 h-4 mr-2" />
-                录入出纳流水
-              </Button>
-              <Button 
-                variant="outline" 
-                className="w-full justify-start"
-                onClick={() => onNavigate('/vouchers/management')}
-              >
-                <BookOpen className="w-4 h-4 mr-2" />
-                新增记账凭证
-              </Button>
-              <Button 
-                variant="outline" 
-                className="w-full justify-start"
-                onClick={() => onNavigate('/funds/transfer')}
-              >
-                <ArrowRight className="w-4 h-4 mr-2" />
-                新增内部转账
-              </Button>
+      {/* 3. 底部：待办与入口 */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* 左侧：待办事项 (2/3) */}
+        <Card className="col-span-2 p-6">
+            <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+                <AlertCircle className="w-5 h-5 text-orange-500"/> 待办事项
+            </h3>
+            <div className="grid grid-cols-3 gap-4">
+                <div className="bg-orange-50 p-4 rounded-lg border border-orange-100 flex flex-col justify-between hover:shadow-sm transition-shadow">
+                    <span className="text-sm text-orange-600 font-medium">待审核凭证</span>
+                    <div className="flex items-end justify-between mt-2">
+                        <span className="text-2xl font-bold text-orange-900">{todoItems.pendingVouchers}</span>
+                        <Button variant="ghost" size="sm" className="h-6 text-orange-700 hover:text-orange-900 px-0" onClick={() => onNavigate('/vouchers/management')}>处理 &rarr;</Button>
+                    </div>
+                </div>
+                <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 flex flex-col justify-between hover:shadow-sm transition-shadow">
+                    <span className="text-sm text-blue-600 font-medium">未分类流水</span>
+                    <div className="flex items-end justify-between mt-2">
+                        <span className="text-2xl font-bold text-blue-900">{todoItems.unclassifiedTransactions}</span>
+                        <Button variant="ghost" size="sm" className="h-6 text-blue-700 hover:text-blue-900 px-0" onClick={() => onNavigate('/funds/journal')}>处理 &rarr;</Button>
+                    </div>
+                </div>
+                <div className="bg-purple-50 p-4 rounded-lg border border-purple-100 flex flex-col justify-between hover:shadow-sm transition-shadow">
+                    <span className="text-sm text-purple-600 font-medium">资金待核对</span>
+                    <div className="flex items-end justify-between mt-2">
+                        <span className="text-2xl font-bold text-purple-900">{todoItems.accountsToReconcile} <span className="text-sm font-normal">个</span></span>
+                        <Button variant="ghost" size="sm" className="h-6 text-purple-700 hover:text-purple-900 px-0" onClick={() => onNavigate('/reports/reconciliation')}>去核对 &rarr;</Button>
+                    </div>
+                </div>
             </div>
-          </Card>
+        </Card>
 
-          {/* 右侧：月末工作提醒 */}
-          <Card className="p-6">
-            <h3 className="text-gray-900 mb-4">月末工作提醒</h3>
-            <div className="space-y-3">
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <p className="text-sm text-blue-700 mb-2">
-                  距本月结账截止还有 <span className="font-semibold">{daysUntilMonthEnd}</span> 天
-                </p>
-                <Button 
-                  size="sm" 
-                  className="w-full"
-                  onClick={() => onNavigate('/closing/execute')}
-                >
-                  执行期末结转
+        {/* 右侧：快捷入口 (1/3) */}
+        <Card className="p-6 bg-gradient-to-br from-gray-50 to-white">
+            <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+                <BookOpen className="w-5 h-5 text-gray-500"/> 常用功能
+            </h3>
+            <div className="space-y-2">
+                <Button variant="outline" className="w-full justify-between group" onClick={() => onNavigate('/vouchers/entry')}>
+                    <span className="text-gray-700">录入凭证</span>
+                    <ArrowRight className="w-4 h-4 text-gray-400 group-hover:text-blue-600 transition-colors"/>
                 </Button>
-              </div>
-              <Button 
-                variant="outline" 
-                className="w-full justify-start"
-                onClick={() => onNavigate('/reports/balance-sheet')}
-              >
-                <TrendingUp className="w-4 h-4 mr-2" />
-                查看本期报表
-              </Button>
+                <Button variant="outline" className="w-full justify-between group" onClick={() => onNavigate('/funds/journal')}>
+                    <span className="text-gray-700">出纳日记账</span>
+                    <ArrowRight className="w-4 h-4 text-gray-400 group-hover:text-blue-600 transition-colors"/>
+                </Button>
+                <div className="pt-2 mt-2 border-t border-gray-100">
+                    <div className="flex items-center justify-between text-xs text-gray-500 mb-2">
+                        <span>本月结账倒计时</span>
+                        <span className="font-mono font-bold text-blue-600">{daysUntilMonthEnd} 天</span>
+                    </div>
+                    <Button size="sm" className="w-full bg-blue-600 hover:bg-blue-700" onClick={() => onNavigate('/accounting/closing')}>
+                        去结转损益
+                    </Button>
+                </div>
             </div>
-          </Card>
-        </div>
-      </section>
+        </Card>
+      </div>
     </div>
   );
 }

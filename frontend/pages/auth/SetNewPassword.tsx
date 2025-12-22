@@ -1,41 +1,51 @@
 import { useState, useEffect } from 'react';
-import { Building2, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
-import { Button } from '../../components/ui/button';
-import { Input } from '../../components/ui/input';
-import { Label } from '../../components/ui/label';
-import { Alert, AlertDescription } from '../../components/ui/alert';    
-import { resetVerify, resetConfirm } from '@/lib/api/auth';
 import { useRouter } from 'next/router';
+import { Building2, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
+// ✅ 优化路径
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+// ✅ 引用 API (需要在 mockData.ts 中补全)
+import { resetVerify, resetConfirm } from '@/lib/mockData';
 
 interface SetNewPasswordProps {
-  onSuccess: () => void;
+  onSuccess?: () => void;
 }
 
 export default function SetNewPassword({ onSuccess }: SetNewPasswordProps) {
-  const [token, setToken] = useState('');
+  const router = useRouter();
+  // 兼容两种获取方式：query 或者 window.location
+  const token = (router.query.token as string) || '';
+  
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [tokenValid, setTokenValid] = useState(true);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [email, setEmail] = useState('');
-  const router = useRouter();
 
+  // 1. 页面加载时校验 Token
   useEffect(() => {
+    if (!router.isReady) return; // 等待路由就绪
+    const t = (router.query.token as string);
+    
+    if (!t) {
+        setTokenValid(false);
+        return;
+    }
+
     const run = async () => {
-      const params = new URLSearchParams(window.location.search);
-      const t = params.get('token') || '';
-      setToken(t);
       try {
         const info = await resetVerify(t);
         setEmail(info.email || '');
         setTokenValid(true);
-      } catch {
+      } catch (e) {
+        console.error("Token 无效", e);
         setTokenValid(false);
       }
     };
     run();
-  }, []);
+  }, [router.isReady, router.query.token]);
 
   const getPasswordStrength = (pwd: string) => {
     if (pwd.length === 0) return { label: '', color: '' };
@@ -66,15 +76,23 @@ export default function SetNewPassword({ onSuccess }: SetNewPasswordProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validateForm()) return;
+    
     setLoading(true);
     try {
+      // ✅ 2. 提交新密码
       await resetConfirm(token, newPassword);
+      
+      // 3. 跳转逻辑优化
       if (email) {
+        // 如果知道邮箱，直接跳去输密码
         router.push(`/auth/LoginPassword?email=${encodeURIComponent(email)}`);
       } else {
+        // 否则跳回入口
         router.push('/auth/LoginEntry');
       }
-    } catch {
+    } catch (e) {
+      console.error(e);
+      // 这里可以加个 toast 提示
       setLoading(false);
     }
   };
@@ -88,9 +106,9 @@ export default function SetNewPassword({ onSuccess }: SetNewPasswordProps) {
           </div>
           <h1 className="text-gray-900 mb-3">链接已失效</h1>
           <p className="text-gray-600 mb-6">
-            此邀请链接已失效或已过期。请联系您的管理员重新发送邀请。
+            此重置链接已失效或已过期。请重新发起密码重置请求。
           </p>
-          <Button onClick={onSuccess}>返回登录</Button>
+          <Button onClick={() => router.push('/auth/ResetPassword')}>返回重试</Button>
         </div>
       </div>
     );

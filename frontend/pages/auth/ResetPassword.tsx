@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { Building2, Loader2, ArrowLeft } from 'lucide-react';
-import { Button } from '../../components/ui/button';
-import { Input } from '../../components/ui/input';
-import { Label } from '../../components/ui/label';
-import { resetRequest } from '@/lib/api/auth';
-
 import { useRouter } from 'next/router';
+import { Building2, Loader2, ArrowLeft } from 'lucide-react';
+// ✅ 优化：使用 @ 别名路径
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+// ✅ 修正：指向 mockData.ts
+import { resetRequest } from '@/lib/mockData';
 
 export default function ResetPassword() {
   const router = useRouter();
@@ -29,10 +30,16 @@ export default function ResetPassword() {
 
     setLoading(true);
     try {
+      // 调用后端发送重置邮件接口
       await resetRequest(email);
+      // 跳转到发送成功页 (需要你自己创建 ResetPasswordSent 页面)
       router.push(`/auth/ResetPasswordSent?email=${encodeURIComponent(email)}`);
-    } catch {
+    } catch (err: any) {
+      // 出于安全考虑，通常即使邮箱不存在也不报错，或者提示模糊信息
+      // 这里为了演示方便，如果出错(如网络问题)则停止 loading
+      console.error(err);
       setLoading(false);
+      // 可选：setError('发送失败，请稍后重试');
     }
   };
 
@@ -40,19 +47,19 @@ export default function ResetPassword() {
     <div className="min-h-screen flex items-center justify-center px-4">
       <div className="w-full max-w-md">
         <button
-          onClick={() => router.push('/auth/LoginEntry')}
-          className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-8"
+          onClick={() => router.push('/login')} // 假设登录页路由是 /login
+          className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-8 transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
           返回登录
         </button>
 
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-600 rounded-xl mb-4">
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-600 rounded-xl mb-4 shadow-lg shadow-blue-100">
             <Building2 className="w-8 h-8 text-white" />
           </div>
-          <h1 className="text-gray-900 mb-2">重置密码</h1>
-          <p className="text-gray-600">输入您的注册邮箱，我们将发送重置链接</p>
+          <h1 className="text-xl font-bold text-gray-900 mb-2">重置密码</h1>
+          <p className="text-gray-600 text-sm">输入您的注册邮箱，我们将发送重置链接</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -76,7 +83,7 @@ export default function ResetPassword() {
 
           <Button 
             type="submit" 
-            className="w-full"
+            className="w-full bg-blue-600 hover:bg-blue-700"
             disabled={loading || !email}
           >
             {loading ? (

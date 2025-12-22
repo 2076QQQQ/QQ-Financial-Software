@@ -1,135 +1,874 @@
-// 全局模拟数据存储
-// 用于在组件之间共享数据
+// ------------------------------------------------------------------
+// 文件路径: frontend/lib/mockData.ts (建议重命名为 api.ts)
+// 说明：这是真实的 API Client，连接 http://localhost:4000/api
+// 修改说明：已全面支持多账套隔离，核心接口强制要求传入 bookId
+// ------------------------------------------------------------------
 
-// 期初余额数据（从UC04期初数据录入获取）- 按科目代码存储
-export interface SubjectInitialBalance {
-  subjectCode: string;
-  subjectName: string;
-  debitBalance: number;  // 借方余额
-  creditBalance: number; // 贷方余额
+const API_BASE = 'http://localhost:4000/api';
+
+interface CustomRequestInit extends Omit<RequestInit, 'body'> {
+  body?: any;
 }
 
-export let subjectInitialBalances: SubjectInitialBalance[] = [];
+// 核心请求函数
+const client = async (endpoint: string, { body, ...customConfig }: CustomRequestInit = {}) => {
+  const headers = { 'Content-Type': 'application/json' };
 
-// 更新科目期初余额
-export function updateSubjectInitialBalance(subjectCode: string, subjectName: string, debitBalance: number, creditBalance: number) {
-  const index = subjectInitialBalances.findIndex(s => s.subjectCode === subjectCode);
-  if (index >= 0) {
-    subjectInitialBalances[index] = { subjectCode, subjectName, debitBalance, creditBalance };
-  } else {
-    subjectInitialBalances.push({ subjectCode, subjectName, debitBalance, creditBalance });
+  const config: RequestInit = {
+    method: body ? 'POST' : 'GET',
+    ...customConfig,
+    headers: {
+      ...headers,
+      ...customConfig.headers,
+    },
+    credentials: 'include', 
+    cache: 'no-store',
+  };
+
+  if (body) {
+    config.body = JSON.stringify(body);
   }
-}
 
-// 获取科目期初余额
-export function getSubjectInitialBalance(subjectCode: string) {
-  const balance = subjectInitialBalances.find(s => s.subjectCode === subjectCode);
-  return balance || { subjectCode, subjectName: '', debitBalance: 0, creditBalance: 0 };
-}
+  try {
+    const response = await fetch(`${API_BASE}${endpoint}`, config);
 
-// 批量更新期初余额（从InitialDataEntry调用）
-export function batchUpdateInitialBalances(balances: SubjectInitialBalance[]) {
-  subjectInitialBalances = balances;
-}
+    if (!response.ok) {
+      // ✅ 关键修复：先定义 errorText 变量，再使用它
+      const errorText = await response.text();
+      
+      // 创建自定义错误对象，附加状态码
+      const error: any = new Error(errorText || `API Request failed: ${response.status}`);
+      error.status = response.status; // 把 404/401 等状态码挂载上去
+      throw error;
+    }
 
-// 兼容旧的期初余额接口（保持向后兼容）
-export let initialBalances = {
-  cash: 0,          // 1001 库存现金期初余额
-  bankDeposit: 0,  // 1002 银行存款期初余额
-  total: 0         // 资金账户期初余额合计
+    const text = await response.text();
+    return text ? JSON.parse(text) : {};
+  } catch (error) {
+    // console.error(`请求失败 [${endpoint}]:`, error); 
+    throw error;
+  }
 };
 
-// 更新期初余额（兼容旧接口）
-export function updateInitialBalances(data: { cash: number; bankDeposit: number }) {
-  initialBalances = {
-    cash: data.cash,
-    bankDeposit: data.bankDeposit,
-    total: data.cash + data.bankDeposit
-  };
-  
-  // 同时更新新的科目期初余额结构
-  updateSubjectInitialBalance('1001', '库存现金', data.cash, 0);
-  updateSubjectInitialBalance('1002', '银行存款', data.bankDeposit, 0);
-}
+// ==========================================
+// 0. 通用类型定义 (Types)
+// ==========================================
 
-// 出纳日记账流水（从UC11获取）
-export let journalEntries = {
-  totalInflow: 0,   // 本期流入总额
-  totalOutflow: 0,  // 本期流出总额
+export type FundAccount = any;
+export type Partner = any;
+export type JournalEntry = any;
+export type VoucherTemplate = any; 
+
+// ==========================================
+// 1.5. 账套设置 API (Account Books)
+// 说明：这是入口，不需要传 bookId
+// ==========================================
+
+export const getAccountBooks = async () => {
+  return client('/settings/account-books');
 };
 
-// 更新日记账统计
-export function updateJournalStats(data: { totalInflow: number; totalOutflow: number }) {
-  journalEntries = data;
-}
+export const addAccountBook = async (data: any) => {
+  return client('/settings/account-books', { body: data });
+};
 
-// 计算当前资金余额
-export function getCurrentBalance() {
-  // 从资金账户获取期初余额总额
-  const fundAccounts = getAllFundAccounts();
-  const initialTotal = fundAccounts.reduce((sum, account) => sum + account.initialBalance, 0);
+export const updateAccountBook = async (data: any) => {
+  return client('/settings/account-books', { 
+    method: 'PUT', 
+    body: data 
+  });
+};
+
+export const deleteAccountBook = async (id: string) => {
+  return client(`/settings/account-books?id=${id}`, { method: 'DELETE' });
+};
+
+// ==========================================
+// 1. 资金账户 API (Fund Accounts)
+// 修改：增加 bookId 参数
+// ==========================================
+
+export const getAllFundAccounts = async (bookId: string) => {
+  if (!bookId) return [];
+  return client(`/settings/fund-accounts?accountBookId=${bookId}`);
+};
+
+// 【兼容旧引用】注意：调用处需要修改，传入 bookId
+export const getFundAccounts = getAllFundAccounts;
+
+export const addFundAccount = async (account: any, bookId: string) => {
+  return client('/settings/fund-accounts', { 
+    body: { ...account, accountBookId: bookId } 
+  });
+};
+
+export const updateFundAccount = async (id: string, account: any) => {
+  return client('/settings/fund-accounts', {
+    method: 'PUT',
+    body: { id, ...account }
+  });
+};
+
+export const deleteFundAccount = async (id: string) => {
+  return client(`/settings/fund-accounts/${id}`, { method: 'DELETE' });
+};
+
+// ==========================================
+// 2. 往来单位/辅助核算 API (Auxiliary Items)
+// 修改说明：已修正 URL 格式以匹配 server.ts
+// ==========================================
+
+export const getPartners = async (bookId: string) => {
+  return client(`/settings/auxiliary-items?accountBookId=${bookId}`);
+};
+
+export const getAuxiliaryCategories = async (bookId: string) => {
+  if (!bookId) return [];
+  return client(`/settings/auxiliary-categories?accountBookId=${bookId}`);
+};
+
+export const createAuxiliaryCategory = async (data: { name: string; bookId: string; isBuiltIn?: boolean }) => {
+  return client('/settings/auxiliary-categories', { 
+    body: { 
+        name: data.name, 
+        accountBookId: data.bookId,
+        isBuiltIn: data.isBuiltIn || false
+    } 
+  });
+};
+
+export const updateAuxiliaryCategory = async (id: string, data: any) => {
+  return client(`/settings/auxiliary-categories/${id}`, { method: 'PUT', body: data });
+};
+
+// --- 具体的辅助核算档案 (如：客户A、供应商B) ---
+
+export const getAllAuxiliaryItems = async (bookId: string, categoryId?: string) => {
+  if (!bookId) return [];
+  let url = `/settings/auxiliary-items?accountBookId=${bookId}`;
+  if (categoryId) {
+      url += `&categoryId=${categoryId}`;
+  }
+  return client(url);
+};
+
+export const addAuxiliaryItem = async (item: any, bookId: string) => {
+  return client('/settings/auxiliary-items', { 
+    body: { ...item, accountBookId: bookId } 
+  });
+};
+
+// ❌ 之前的错误：client(`/settings/auxiliary-items/${id}`...
+// ✅ 修正如下：server.ts 中 PUT 接口没有 /:id，ID 在 body 里
+export const updateAuxiliaryItem = async (item: any) => {
+  return client('/settings/auxiliary-items', { 
+    method: 'PUT', 
+    body: item 
+  });
+};
+
+// ❌ 之前的错误：client(`/settings/auxiliary-items/${id}`...
+// ✅ 修正如下：server.ts 中 DELETE 接口用的是 req.query.id
+export const deleteAuxiliaryItem = async (id: string) => {
+  return client(`/settings/auxiliary-items?id=${id}`, { method: 'DELETE' });
+};
+export const deleteAuxiliaryCategory = async (id: string) => {
+  return client(`/settings/auxiliary-categories/${id}`, { method: 'DELETE' });
+};
+
+// ==========================================
+// 3. 出纳日记账 API (Cash Journal)
+// 修改：增加 bookId 参数
+// ==========================================
+
+export const getJournalEntries = async (bookId: string, accountId?: string, startDate?: string, endDate?: string) => {
+  const params = new URLSearchParams();
+  params.append('accountBookId', bookId); // 核心：增加账套ID
+  if (accountId) params.append('accountId', accountId);
+  if (startDate) params.append('startDate', startDate);
+  if (endDate) params.append('endDate', endDate);
+
+  return client(`/journal-entries?${params.toString()}`);
+};
+
+export const addJournalEntry = async (entry: any, bookId: string) => {
+  return client('/journal-entries', { 
+    body: { ...entry, accountBookId: bookId } 
+  });
+};
+
+export const updateJournalEntry = async (entry: any) => {
+  const id = entry.id; 
+  return client(`/journal-entries/${id}`, {
+    method: 'PUT',
+    body: entry
+  });
+};
+
+export const deleteJournalEntry = async (id: string) => {
+  return client(`/journal-entries/${id}`, { method: 'DELETE' });
+};
+
+export const batchUpdateJournalEntries = async (ids: string[], updates: any) => {
+  return client('/journal-entries/batch-update', {
+    body: { ids, updates }
+  });
+};
+
+// ==========================================
+// 4. 凭证管理 API (Vouchers)
+// 修改：增加 bookId 参数
+// ==========================================
+
+export const getAllVouchers = async (bookId: string) => {
+  if (!bookId) {
+    console.warn("API警告: getAllVouchers 未传入 bookId，返回空数组以防止数据混淆");
+    return [];
+  }
+  return client(`/vouchers?accountBookId=${bookId}`);
+};
+
+export const addVoucher = async (voucher: any, bookId: string) => {
+  return client('/vouchers', { 
+    body: { ...voucher, accountBookId: bookId } 
+  });
+};
+
+export const updateVoucher = async (id: string, voucher: any) => {
+  return client('/vouchers', { method: 'PUT', body: { id, ...voucher } });
+};
+
+export const deleteVoucher = async (id: string) => {
+  return client(`/vouchers/${id}`, { method: 'DELETE' });
+};
+
+export const batchUpdateVouchers = async (vouchers: any[]) => {
+  return client('/vouchers/batch', { body: vouchers });
+};
+
+// 专用审核接口
+export const auditVoucher = async (id: string, auditorName?: string) => {
+  return client(`/vouchers/${id}/audit`, { method: 'POST', body: { auditorName } });
+};
+
+// 专用反审核接口
+export const unauditVoucher = async (id: string) => {
+  return client(`/vouchers/${id}/unaudit`, { method: 'POST', body: {} });
+};
+export const createVoucher = addVoucher;
+// ==========================================
+// 5. 凭证模板 API (Templates)
+// 修改：增加 bookId 参数
+// ==========================================
+
+export const getAllTemplates = async (bookId: string) => {
+  if (!bookId) return [];
+  return client(`/voucher-templates?accountBookId=${bookId}`);
+};
+
+// 【重要】VoucherEntry.tsx 需要这个接口
+export const getEnabledTemplates = async (bookId: string) => {
+  const all = await client(`/voucher-templates?accountBookId=${bookId}`);
+  if (Array.isArray(all)) {
+    return all.filter((t: any) => t.status === '已启用');
+  }
+  return [];
+};
+
+export const addVoucherTemplate = async (template: any, bookId: string) => {
+  return client('/voucher-templates', { 
+    body: { ...template, accountBookId: bookId } 
+  });
+};
+
+export const updateVoucherTemplate = async (idOrTemplate: any, templateData?: any) => {
+  const data = templateData || idOrTemplate;
+  const id = typeof idOrTemplate === 'string' ? idOrTemplate : idOrTemplate.id;
+  return client(`/voucher-templates/${id}`, {
+    method: 'PUT',
+    body: data
+  });
+};
+
+export const deleteVoucherTemplate = async (id: string | { id: string }) => {
+  const realId = typeof id === 'object' ? id.id : id;
+  return client(`/voucher-templates/${realId}`, { method: 'DELETE' });
+};
+
+// ==========================================
+// 6. 其他设置 (Subjects / Initial Balances)
+// 修改：增加 bookId 参数
+// ==========================================
+
+export const getAllSubjects = async (bookId: string) => {
+  if (!bookId) return [];
+  return client(`/settings/subjects?accountBookId=${bookId}`);
+};
+// 【新增】创建科目
+export const createSubject = async (subject: any) => {
+  // 注意：subject 对象里必须包含 accountBookId
+  return client('/settings/subjects', { 
+    body: subject 
+  });
+};
+
+// 【新增】更新科目
+export const updateSubject = async (subject: any) => {
+  return client(`/settings/subjects`, {  // 👈 注意这里不要加 /${subject.id}
+    method: 'PUT',
+    body: subject
+  });
+};
+
+// 【新增】删除科目
+export const deleteSubject = async (id: string) => {
+  return client(`/settings/subjects?id=${id}`, { method: 'DELETE' });
+};
+
+// 【兼容旧名称】为了防止组件报错，可以导出别名
+export const getSubjects = getAllSubjects;
+export const batchUpdateInitialBalances = async (data: any[]) => {
+  // data 是一个数组，包含 subjectId, initialBalance 等
+  // 这里直接调用后端
+  return client('/initial-balances/batch', { 
+    body: data 
+  });
+};
+// ==========================================
+// 在 frontend/lib/mockData.ts 中添加以下代码
+// ==========================================
+
+export const completeInitialization = async (bookId: string) => {
+  // 注意：URL 必须和 server.ts 里的路由完全一致
+  return client('/settings/initialization/complete', { 
+    body: { accountBookId: bookId } 
+  });
+};
+
+// 兼容函数：获取特定科目期初余额
+export const getSubjectInitialBalance = async (bookId: string, subjectCode: string,auxiliaryItemId?: string) => {
+  const subjects: any[] = await getAllSubjects(bookId);
+  const subject = subjects.find(s => s.code === subjectCode);
   
+  if (!subject) return { debitBalance: 0, creditBalance: 0 };
+  if (auxiliaryItemId) {
+      // 你可能需要增加一个 API: getInitialBalance(bookId, subjectId, auxId)
+      // 暂时返回 0 或模拟数据，防止崩溃
+      return { debitBalance: 0, creditBalance: 0 }; 
+  }
   return {
-    totalBalance: initialTotal + journalEntries.totalInflow - journalEntries.totalOutflow,
-    totalInflow: journalEntries.totalInflow,
-    totalOutflow: journalEntries.totalOutflow,
-    initialTotal: initialTotal
+    debitBalance: subject.direction === '借' ? (parseFloat(subject.initialBalance) || 0) : 0,
+    creditBalance: subject.direction === '贷' ? (parseFloat(subject.initialBalance) || 0) : 0
   };
-}
+};
+export const deleteInitialBalanceEntry = async (id: string) => {
+  // 发送 DELETE 请求到后端
+  return client(`/initial-balances/${id}`, { method: 'DELETE' });
+};
 
-// 凭证模板数据（从UC05获取）
-export interface VoucherTemplate {
+
+// ==========================================
+// 7. 内部转账 API (Internal Transfers)
+// 修改：增加 bookId 参数
+// ==========================================
+
+export interface InternalTransfer {
   id: string;
-  name: string;
-  voucherType: string;
-  status: '待审核' | '已启用' | '已驳回';
-  lines: Array<{
-    id: string;
-    summary: string;
-    subjectId: string;
-    subjectCode: string;
-    subjectName: string;
-    debitAmount: string;
-    creditAmount: string;
-  }>;
-  createdAt: string;
+  date: string;
+  fromAccountId: string;
+  fromAccountName: string;
+  toAccountId: string;
+  toAccountName: string;
+  amount: number;
+  remark: string;
+  voucherCode?: string;
+  withdrawalEntryId?: string;
+  depositEntryId?: string;
 }
 
-export let voucherTemplates: VoucherTemplate[] = [];
+export const getInternalTransfers = async (bookId: string, startDate?: string, endDate?: string, summary?: string) => {
+  const params = new URLSearchParams();
+  params.append('accountBookId', bookId);
+  if (startDate) params.append('startDate', startDate);
+  if (endDate) params.append('endDate', endDate);
+  if (summary) params.append('summary', summary);
+  
+  return client(`/internal-transfers?${params.toString()}`);
+};
 
-// 添加凭证模板
-export function addVoucherTemplate(template: VoucherTemplate) {
-  voucherTemplates = [...voucherTemplates, template];
+export const addInternalTransfer = async (transfer: any, bookId: string) => {
+  return client('/internal-transfers', { 
+    body: { ...transfer, accountBookId: bookId } 
+  });
+};
+
+export const updateInternalTransfer = async (idOrData: any, data?: any) => {
+  const id = typeof idOrData === 'string' ? idOrData : idOrData.id;
+  const body = data || idOrData;
+  return client(`/internal-transfers/${id}`, {
+    method: 'PUT',
+    body: body
+  });
+};
+
+export const deleteInternalTransfer = async (id: string) => {
+  return client(`/internal-transfers/${id}`, { method: 'DELETE' });
+};
+
+// ==========================================
+// 8. ★★★ 报表中心 API (Reports) ★★★
+// 修改：全部增加 bookId 参数
+// ==========================================
+
+// 1. 定义账户汇总类型
+export interface AccountSummary {
+  accountId: string;
+  accountName: string;
+  accountType: string;
+  initialBalance: number;
+  periodIncome: number;
+  periodExpense: number;
+  endingBalance: number;
 }
 
-// 获取所有模板
-export function getAllTemplates() {
-  return voucherTemplates;
+// 2. 定义科目汇总类型
+export interface SubjectSummary {
+  subjectId: string;
+  subjectName: string;
+  subjectCode: string;
+  type: 'income' | 'expense' | 'uncategorized';
+  incomeAmount: number;
+  expenseAmount: number;
+  incomeCount: number;
+  expenseCount: number;
 }
 
-// 更新凭证模板
-export function updateVoucherTemplate(id: string, updates: Partial<VoucherTemplate>) {
-  voucherTemplates = voucherTemplates.map(t => 
-    t.id === id ? { ...t, ...updates } : t
+// 3. 定义接口响应结构
+export interface FundSummaryResponse {
+  accountSummaries: AccountSummary[];
+  subjectSummaries: SubjectSummary[];
+}
+
+// 4. 获取资金汇总报表函数
+export interface AccountSummary {
+  accountId: string;
+  accountName: string;
+  initialBalance: number;
+  periodIncome: number;
+  periodExpense: number;
+  endingBalance: number;
+}
+
+export interface SubjectSummary {
+  type: 'income' | 'expense' | 'uncategorized';
+  categoryName: string;
+  incomeAmount: number;
+  expenseAmount: number;
+  count: number;
+}
+
+export interface FundSummaryResponse {
+  accountSummaries: AccountSummary[];
+  subjectSummaries: SubjectSummary[];
+}
+
+export const getFundSummaryReport = async (bookId: string, startDate: string, endDate: string): Promise<FundSummaryResponse> => {
+  const params = new URLSearchParams();
+  // ✅ 核心：前端在这里把 accountBookId 传给后端
+  params.append('accountBookId', bookId);
+  params.append('startDate', startDate);
+  params.append('endDate', endDate);
+  
+  // client 是 mockData.ts 里封装的 fetch
+  return client(`/reports/fund-summary?${params.toString()}`);
+};
+// 明细分类账 (UC15)
+export const getDetailedLedgerReport = (
+  bookId: string, // <--- 关键修复：这里新增了第一个参数 bookId
+  subjectCode: string, 
+  periodTo: string, 
+  periodFrom?: string, 
+  subjectToCode?: string
+) => {
+  const params = new URLSearchParams();
+  
+  // 1. 传给后端的参数名必须叫 accountBookId (对应 server.ts 的 req.query.accountBookId)
+  params.append('accountBookId', bookId); 
+  
+  params.append('subjectCode', subjectCode);
+  params.append('periodTo', periodTo);
+  
+  // periodFrom 如果没传，就默认用 periodTo
+  params.append('periodFrom', periodFrom || periodTo); 
+  
+  if (subjectToCode) {
+    params.append('subjectToCode', subjectToCode);
+  }
+
+  return client(`/reports/detailed-ledger?${params.toString()}`);
+};
+
+// 总分类账 (General Ledger) 接口
+export const getGeneralLedgerReport = (bookId: string, params: {
+  periodFrom: string;
+  periodTo: string;
+  subjectFrom: string;
+  subjectTo: string;
+  levelFrom: number;
+  levelTo: number;
+}) => {
+  const q = new URLSearchParams();
+  q.append('accountBookId', bookId);
+  q.append('periodFrom', params.periodFrom);
+  q.append('periodTo', params.periodTo);
+  q.append('subjectFrom', params.subjectFrom);
+  q.append('subjectTo', params.subjectTo);
+  q.append('levelFrom', String(params.levelFrom));
+  q.append('levelTo', String(params.levelTo));
+
+  return client(`/reports/general-ledger?${q.toString()}`);
+};
+
+// ==========================================
+// 9. 报表辅助函数 (前端计算类)
+// 修改：传递 bookId 到基础 API
+// ==========================================
+
+// 辅助：判断科目余额方向
+const getDirectionForIncomeStatement = (code: string) => {
+  if (code.startsWith('60') || code.startsWith('61') || code.startsWith('63')) {
+    return '贷'; // 收入类：贷 - 借
+  }
+  return '借'; // 费用类：借 - 贷
+};
+
+/**
+ * 获取某科目在特定期间的发生额 (本期金额)
+ * @param bookId 账套ID (必填)
+ */
+export const getSubjectPeriodAmount = async (bookId: string, code: string, period: string) => {
+  const vouchers: any[] = await getAllVouchers(bookId);
+  
+  // 1. 确定日期范围
+  const startDate = `${period}-01`;
+  const [y, m] = period.split('-');
+  const lastDay = new Date(parseInt(y), parseInt(m), 0).getDate();
+  const endDate = `${period}-${lastDay}`;
+
+  // 2. 筛选凭证
+  const targetVouchers = vouchers.filter(v => 
+    v.status === 'approved' && 
+    v.voucherDate >= startDate && 
+    v.voucherDate <= endDate
   );
-}
 
-// 删除凭证模板
-export function deleteVoucherTemplate(id: string) {
-  voucherTemplates = voucherTemplates.filter(t => t.id !== id);
-}
+  let debit = 0;
+  let credit = 0;
 
-// 获取已启用的模板
-export function getEnabledTemplates() {
-  return voucherTemplates.filter(t => t.status === '已启用');
-}
+  targetVouchers.forEach(v => {
+    (v.lines || []).forEach((line: any) => {
+      // 匹配科目 (包含下级)
+      if (line.subjectCode === code || line.subjectCode.startsWith(code)) {
+        debit += parseFloat(line.debitAmount) || 0;
+        credit += parseFloat(line.creditAmount) || 0;
+      }
+    });
+  });
 
-// 结转模板管理
-interface ClosingTemplateLine {
+  // 3. 根据方向返回净额
+  const direction = getDirectionForIncomeStatement(code);
+  return direction === '贷' ? (credit - debit) : (debit - credit);
+};
+
+/**
+ * 获取某科目在本年的累计发生额 (本年累计金额)
+ * @param bookId 账套ID (必填)
+ */
+export const getSubjectYearTotal = async (bookId: string, code: string, period: string) => {
+  const vouchers: any[] = await getAllVouchers(bookId);
+
+  // 1. 确定日期范围
+  const year = period.split('-')[0];
+  const startDate = `${year}-01-01`; // 年初
+  
+  const [y, m] = period.split('-');
+  const lastDay = new Date(parseInt(y), parseInt(m), 0).getDate();
+  const endDate = `${period}-${lastDay}`; // 本期末
+
+  // 2. 筛选凭证
+  const targetVouchers = vouchers.filter(v => 
+    v.status === 'approved' && 
+    v.voucherDate >= startDate && 
+    v.voucherDate <= endDate
+  );
+
+  let debit = 0;
+  let credit = 0;
+
+  targetVouchers.forEach(v => {
+    (v.lines || []).forEach((line: any) => {
+      if (line.subjectCode === code || line.subjectCode.startsWith(code)) {
+        debit += parseFloat(line.debitAmount) || 0;
+        credit += parseFloat(line.creditAmount) || 0;
+      }
+    });
+  });
+
+  // 3. 根据方向返回净额
+  const direction = getDirectionForIncomeStatement(code);
+  return direction === '贷' ? (credit - debit) : (debit - credit);
+};
+
+// ==========================================
+// 10. 期末结转专用 API (Period Closing)
+// 修改：增加 bookId
+// ==========================================
+
+export const getClosingVoucherByType = async (bookId: string, period: string, closingType: string) => {
+  const vouchers: any[] = await getAllVouchers(bookId);
+  return vouchers.find(v => 
+    v.period === period && 
+    v.closingType === closingType && 
+    v.status !== 'void'
+  );
+};
+
+// 获取科目余额（异步版）
+export const getSubjectBalanceAsync = async (bookId: string, subjectCode: string, period: string) => {
+  const vouchers: any[] = await getAllVouchers(bookId);
+  
+  // 1. 确定日期范围
+  const [y, m] = period.split('-');
+  const lastDay = new Date(parseInt(y), parseInt(m), 0).getDate();
+  const endDate = `${period}-${lastDay}`;
+
+  // 2. 筛选凭证
+  const targetVouchers = vouchers.filter(v => 
+    v.status === 'approved' && 
+    v.voucherDate <= endDate
+  );
+
+  let debitTotal = 0;
+  let creditTotal = 0;
+
+  targetVouchers.forEach(v => {
+    (v.lines || []).forEach((line: any) => {
+      if (line.subjectCode === subjectCode || line.subjectCode.startsWith(subjectCode)) {
+        debitTotal += parseFloat(line.debitAmount) || 0;
+        creditTotal += parseFloat(line.creditAmount) || 0;
+      }
+    });
+  });
+
+  const isDebitDir = subjectCode.startsWith('1') || subjectCode.startsWith('5');
+  const balance = isDebitDir ? (debitTotal - creditTotal) : (creditTotal - debitTotal);
+
+  return { debitTotal, creditTotal, balance };
+};
+
+// 获取本期损益类科目发生额
+export const getProfitLossSubjectsAsync = async (bookId: string, period: string) => {
+  const allSubjects = await getAllSubjects(bookId);
+  const plSubjects = allSubjects.filter((s: any) => s.code.startsWith('6') && !s.hasChildren);
+  
+  const results = [];
+  
+  const startDate = `${period}-01`;
+  const [y, m] = period.split('-');
+  const lastDay = new Date(parseInt(y), parseInt(m), 0).getDate();
+  const endDate = `${period}-${lastDay}`;
+
+  const allVouchers = await getAllVouchers(bookId);
+  const periodVouchers = allVouchers.filter((v: any) => 
+    v.status === 'approved' && v.voucherDate >= startDate && v.voucherDate <= endDate
+  );
+
+  for (const sub of plSubjects) {
+    let debit = 0;
+    let credit = 0;
+    
+    periodVouchers.forEach((v: any) => {
+        (v.lines || []).forEach((line: any) => {
+            if (line.subjectCode === sub.code) {
+                debit += parseFloat(line.debitAmount) || 0;
+                credit += parseFloat(line.creditAmount) || 0;
+            }
+        });
+    });
+
+    if (Math.abs(debit - credit) > 0.01) {
+        results.push({
+            ...sub,
+            periodDebit: debit,
+            periodCredit: credit,
+            netBalance: credit - debit 
+        });
+    }
+  }
+  
+  return results;
+};
+
+// ==========================================
+// 11. 余额计算 (Subject Balance Aggregation)
+// 修改：增加 bookId
+// ==========================================
+
+/* 获取科目在指定日期的余额 (包含期初 + 凭证发生额)
+ * @param bookId 账套ID (必填)
+ * @param codePrefix 科目编码前缀
+ * @param dateStr 截止日期
+ */
+export const getSubjectAggregatedBalance = async (bookId: string, codePrefix: string, dateStr: string) => {
+  const [allSubjects, allVouchers] = await Promise.all([
+    getAllSubjects(bookId),
+    getAllVouchers(bookId)
+  ]);
+
+  // 1. 筛选目标科目（且必须是末级科目，防止父子重复累加）
+  // 逻辑：如果不存在另一个科目的代码以当前代码开头，则当前科目为末级
+  const targetSubjects = (allSubjects || []).filter((s: any) => {
+    const isMatch = s && s.code && (String(s.code) === codePrefix || String(s.code).startsWith(codePrefix));
+    if (!isMatch) return false;
+
+    // 检查是否为末级 (Leaf Node)
+    const isParent = allSubjects.some((other: any) => 
+      other.code !== s.code && String(other.code).startsWith(String(s.code))
+    );
+    return !isParent; 
+  });
+
+  const firstDigit = codePrefix.charAt(0);
+  const isDebitDirection = firstDigit === '1' || firstDigit === '5'; // 资产/成本一般借方增加
+
+  let initialBase = 0;
+  targetSubjects.forEach((s: any) => {
+    const initVal = parseFloat(s.initialBalance || 0);
+    // 根据科目方向加减
+    if (s.direction === '借') {
+      initialBase += initVal;
+    } else {
+      initialBase -= initVal; 
+    }
+  });
+
+  let voucherDebit = 0;
+  let voucherCredit = 0;
+
+  // 2. 统计凭证 (兼容 'approved', 'audited', '已审核')
+  const validVouchers = (allVouchers || []).filter((v: any) => {
+    const status = v.status || '';
+    const isApproved = status === 'approved' || status === 'audited' || status === '已审核';
+    return isApproved && v.voucherDate <= dateStr;
+  });
+
+  validVouchers.forEach((v: any) => {
+    (v.lines || []).forEach((line: any) => {
+      const lineCode = String(line.subjectCode || '');
+      if (lineCode === codePrefix || lineCode.startsWith(codePrefix)) {
+        voucherDebit += parseFloat(line.debitAmount) || 0;
+        voucherCredit += parseFloat(line.creditAmount) || 0;
+      }
+    });
+  });
+
+  const netDebitBalance = initialBase + voucherDebit - voucherCredit;
+
+  return isDebitDirection ? netDebitBalance : -netDebitBalance;
+};
+
+// ==========================================
+// 12. 现金流量表辅助函数
+// 修改：增加 bookId
+// ==========================================
+
+export const getCashFlowAmount = async (bookId: string, counterpartyCodes: string[], period: string, type: 'in' | 'out') => {
+  const vouchers: any[] = await getAllVouchers(bookId);
+  
+  const startDate = `${period}-01`;
+  const [y, m] = period.split('-');
+  const lastDay = new Date(parseInt(y), parseInt(m), 0).getDate();
+  const endDate = `${period}-${lastDay}`;
+
+  const targetVouchers = vouchers.filter(v => 
+    v.status === 'approved' && 
+    v.voucherDate >= startDate && 
+    v.voucherDate <= endDate
+  );
+
+  let total = 0;
+
+  targetVouchers.forEach(v => {
+    const cashLines = (v.lines || []).filter((l: any) => 
+      l.subjectCode.startsWith('1001') || l.subjectCode.startsWith('1002')
+    );
+
+    if (cashLines.length === 0) return; 
+
+    const isCashIn = cashLines.some((l: any) => Number(l.debitAmount) > 0);
+    
+    if (type === 'in' && !isCashIn) return;
+    if (type === 'out' && isCashIn) return;
+
+    const otherLines = (v.lines || []).filter((l: any) => 
+      !l.subjectCode.startsWith('1001') && !l.subjectCode.startsWith('1002')
+    );
+
+    otherLines.forEach((l: any) => {
+      if (counterpartyCodes.some(code => l.subjectCode.startsWith(code))) {
+        const amount = Number(l.debitAmount) || Number(l.creditAmount) || 0;
+        total += amount;
+      }
+    });
+  });
+
+  return total;
+};
+
+// ==========================================
+// 13. 团队管理 API (Team Management)
+// 说明：团队通常是全局的，暂不需要 bookId
+// ==========================================
+
+export const getTeamMembers = async () => {
+  return client('/team/members');
+};
+
+export const inviteMember = async (email: string, role: string, name?: string) => {
+  return client('/team/invite', { body: { email, role,name } });
+};
+
+export const revokeInvitation = async (id: string) => {
+  return client('/team/revoke-invite', { body: { id } });
+};
+
+export const updateTeamMember = async (id: string, updates: { role: string, isAdmin: boolean }) => {
+  return client('/team/member', { 
+    method: 'PUT', 
+    body: { id, ...updates } 
+  });
+};
+
+export const removeTeamMember = async (id: string) => {
+  return client(`/team/member/${id}`, { method: 'DELETE' });
+};
+
+export const resendInvitation = async (id: string) => {
+  return client('/team/resend-invite', { body: { id } });
+};
+
+export const transferOwner = async (newOwnerId: string) => {
+  return client('/team/transfer-owner', { body: { newOwnerId } });
+};
+// ==========================================
+// 14. 结转模板 API (Closing Templates) - 新增
+// ==========================================
+
+export interface ClosingTemplateLine {
   id: string;
   subjectCode: string;
   subjectName: string;
-  source: string;
+  source: string; // 取值来源
   direction: 'debit' | 'credit';
 }
 
@@ -140,1000 +879,139 @@ export interface ClosingTemplate {
   lines: ClosingTemplateLine[];
 }
 
-export let closingTemplates: ClosingTemplate[] = [
-  {
-    id: 't1',
-    name: '结转制造费用',
-    isEnabled: true,
-    lines: [
-      {
-        id: 'l1',
-        subjectCode: '4001',
-        subjectName: '生产成本',
-        source: '4101制造费用',
-        direction: 'debit'
-      },
-      {
-        id: 'l2',
-        subjectCode: '4101',
-        subjectName: '制造费用',
-        source: '4101制造费用',
-        direction: 'credit'
-      }
-    ]
-  }
-];
-
-// 获取所有结转模板
-export function getAllClosingTemplates() {
-  return closingTemplates;
-}
-
-// 获取已启用的结转模板
-export function getEnabledClosingTemplates() {
-  return closingTemplates.filter(t => t.isEnabled);
-}
-
-// 添加结转模板
-export function addClosingTemplate(template: ClosingTemplate) {
-  closingTemplates = [...closingTemplates, template];
-}
-
-// 更新结转模板
-export function updateClosingTemplate(id: string, updates: Partial<ClosingTemplate>) {
-  closingTemplates = closingTemplates.map(t =>
-    t.id === id ? { ...t, ...updates } : t
-  );
-}
-
-// 删除结转模板
-export function deleteClosingTemplate(id: string) {
-  closingTemplates = closingTemplates.filter(t => t.id !== id);
-}
-
-// 切换结转模板启用状态
-export function toggleClosingTemplateEnabled(id: string) {
-  closingTemplates = closingTemplates.map(t =>
-    t.id === id ? { ...t, isEnabled: !t.isEnabled } : t
-  );
-}
-
-// 凭证管理函数
-export function getAllVouchers() {
-  return vouchers;
-}
-
-export function addVoucher(voucher: any) {
-  vouchers = [...vouchers, voucher];
-}
-
-export function updateVoucher(id: string, updates: any) {
-  vouchers = vouchers.map(v => 
-    v.id === id ? { ...v, ...updates } : v
-  );
-}
-
-export function deleteVoucher(id: string) {
-  vouchers = vouchers.filter(v => v.id !== id);
-}
-
-export function batchUpdateVouchers(updatedVouchers: any[]) {
-  vouchers = updatedVouchers;
-}
-
-// 获取待审核凭证数量
-export function getPendingVoucherCount() {
-  return vouchers.filter(v => v.status === 'draft').length;
-}
-
-export function getPendingVouchersCount() {
-  return getPendingVoucherCount();
-}
-
-// 凭证数据（从UC06获取）
-export let vouchers: any[] = [];
-
-// 资金账户数据（从UC09获取）
-export interface FundAccount {
-  id: string;
-  accountType: '银行存款' | '现金';
-  accountCode: string;
-  accountName: string;
-  bankCardNumber?: string;
-  initialDate: string;
-  initialBalance: number;
-  relatedSubjectId: string;
-  relatedSubjectCode: string;
-  relatedSubjectName: string;
-  status: '启用' | '停用';
-}
-
-export let fundAccounts: FundAccount[] = [];
-
-// 资金账户管理函数
-export function getAllFundAccounts() {
-  return fundAccounts;
-}
-
-export function addFundAccount(account: FundAccount) {
-  fundAccounts = [...fundAccounts, account];
-  
-  // 同步到科目期初余额表 - 汇总该科目下所有资金账户的期初余额
-  syncFundAccountsToSubject(account.relatedSubjectCode);
-}
-
-export function updateFundAccount(id: string, updates: Partial<FundAccount>) {
-  const oldAccount = fundAccounts.find(a => a.id === id);
-  fundAccounts = fundAccounts.map(a => 
-    a.id === id ? { ...a, ...updates } : a
-  );
-  
-  // 如果期初余额或关联科目变化，同步到科目期初余额
-  const newAccount = fundAccounts.find(a => a.id === id);
-  if (newAccount && (oldAccount?.initialBalance !== newAccount.initialBalance || 
-      oldAccount?.relatedSubjectCode !== newAccount.relatedSubjectCode)) {
-    // 同步新科目
-    syncFundAccountsToSubject(newAccount.relatedSubjectCode);
-    // 如果关联科目变化了，也要同步旧科目
-    if (oldAccount?.relatedSubjectCode !== newAccount.relatedSubjectCode && oldAccount?.relatedSubjectCode) {
-      syncFundAccountsToSubject(oldAccount.relatedSubjectCode);
-    }
-  }
-}
-
-export function deleteFundAccount(id: string) {
-  const deletedAccount = fundAccounts.find(a => a.id === id);
-  fundAccounts = fundAccounts.filter(a => a.id !== id);
-  
-  // 删除后重新同步该科目的期初余额
-  if (deletedAccount) {
-    syncFundAccountsToSubject(deletedAccount.relatedSubjectCode);
-  }
-}
-
-// 汇总资金账户期初余额到科目期初余额表
-function syncFundAccountsToSubject(subjectCode: string) {
-  // 找到所有关联该科目的资金账户
-  const relatedAccounts = fundAccounts.filter(a => a.relatedSubjectCode === subjectCode);
-  
-  // 汇总期初余额
-  const totalInitialBalance = relatedAccounts.reduce((sum, account) => sum + account.initialBalance, 0);
-  
-  // 获取科目名称
-  const subjectName = relatedAccounts.length > 0 
-    ? relatedAccounts[0].relatedSubjectName 
-    : (subjectCode === '1001' ? '库存现金' : subjectCode === '1002' ? '银行存款' : '');
-  
-  // 更新科目期初余额（资产类科目余额在借方）
-  updateSubjectInitialBalance(
-    subjectCode,
-    subjectName,
-    totalInitialBalance,
-    0
-  );
-}
-
-export function getFundAccountsByType(accountType: '银行存款' | '现金') {
-  return fundAccounts.filter(a => a.accountType === accountType && a.status === '启用');
-}
-
-// 收支类别数据（从UC10获取）
-export interface ExpenseCategory {
-  id: string;
-  code: string;
-  name: string;
-  type: 'expense' | 'income'; // 支出/收入
-  relatedSubjectCode: string;
-  relatedSubjectName: string;
-  cashFlowName?: string; // 关联现金流项目（用于UC20现金流量表）
-  status: '启用' | '停用';
-}
-
-export let expenseCategories: ExpenseCategory[] = [
-  // ========== 支出类别 ==========
-  {
-    id: 'exp-mgmt-salary',
-    code: 'EXP-001-01',
-    name: '工资社保',
-    type: 'expense',
-    relatedSubjectCode: '2211',
-    relatedSubjectName: '应付职工薪酬',
-    cashFlowName: '支付给职工以及为职工支付的现金',
-    status: '启用'
-  },
-  {
-    id: 'exp-mgmt-travel',
-    code: 'EXP-001-02',
-    name: '差旅费',
-    type: 'expense',
-    relatedSubjectCode: '6602',
-    relatedSubjectName: '管理费用',
-    cashFlowName: '支付其他与经营活动有关的现金',
-    status: '启用'
-  },
-  {
-    id: 'exp-mgmt-office',
-    code: 'EXP-001-03',
-    name: '办公用品',
-    type: 'expense',
-    relatedSubjectCode: '6602',
-    relatedSubjectName: '管理费用',
-    cashFlowName: '支付其他与经营活动有关的现金',
-    status: '启用'
-  },
-  {
-    id: 'exp-mgmt-entertain',
-    code: 'EXP-001-04',
-    name: '招待费',
-    type: 'expense',
-    relatedSubjectCode: '6602',
-    relatedSubjectName: '管理费用',
-    cashFlowName: '支付其他与经营活动有关的现金',
-    status: '启用'
-  },
-  {
-    id: 'exp-finance-fee',
-    code: 'EXP-003-01',
-    name: '手续费',
-    type: 'expense',
-    relatedSubjectCode: '6603',
-    relatedSubjectName: '财务费用',
-    cashFlowName: '支付其他与经营活动有关的现金',
-    status: '启用'
-  },
-  {
-    id: 'exp-sales',
-    code: 'EXP-002',
-    name: '销售费用',
-    type: 'expense',
-    relatedSubjectCode: '6601',
-    relatedSubjectName: '销售费用',
-    cashFlowName: '支付其他与经营活动有关的现金',
-    status: '启用'
-  },
-  {
-    id: 'exp-purchase',
-    code: 'EXP-004',
-    name: '采购成本',
-    type: 'expense',
-    relatedSubjectCode: '5001',
-    relatedSubjectName: '主营业务成本',
-    cashFlowName: '购买商品、接受劳务支付的现金',
-    status: '启用'
-  },
-  {
-    id: 'exp-internal-out',
-    code: 'EXP-999-01',
-    name: '内部转账-转出',
-    type: 'expense',
-    relatedSubjectCode: '1002',
-    relatedSubjectName: '银行存款',
-    status: '启用'
-  },
-  
-  // ========== 收入类别 ==========
-  {
-    id: 'inc-main',
-    code: 'INC-001',
-    name: '主营业务收入',
-    type: 'income',
-    relatedSubjectCode: '6001',
-    relatedSubjectName: '主营业务收入',
-    status: '启用'
-  },
-  {
-    id: 'inc-other',
-    code: 'INC-002',
-    name: '其他业务收入',
-    type: 'income',
-    relatedSubjectCode: '6051',
-    relatedSubjectName: '其他业务收入',
-    status: '启用'
-  },
-  {
-    id: 'inc-nonop',
-    code: 'INC-003',
-    name: '营业外收入',
-    type: 'income',
-    relatedSubjectCode: '6901',
-    relatedSubjectName: '营业外收入',
-    status: '启用'
-  },
-  {
-    id: 'inc-internal-in',
-    code: 'INC-999-01',
-    name: '内部转账-转入',
-    type: 'income',
-    relatedSubjectCode: '1002',
-    relatedSubjectName: '银行存款',
-    status: '启用'
-  }
-];
-
-// 往来单位数据（从UC03获取）
-export interface Partner {
-  id: string;
-  type: '客户' | '供应商' | '职员';
-  code: string;
-  name: string;
-  status: '启用' | '停用';
-}
-
-export let partners: Partner[] = [];
-
-// 日记账流水数据（从UC11获取）
-export interface JournalEntry {
-  id: string;
-  accountId: string; // 关联资金账户
-  accountType: '银行存款' | '现金';
-  date: string; // 记账日期
-  summary: string; // 摘要
-  categoryId?: string; // 收支类别ID
-  categoryName?: string; // 收支类别名称
-  partnerId?: string; // 往来单位ID
-  partnerName?: string; // 往来单位名称
-  income: number; // 收入
-  expense: number; // 支出
-  balance: number; // 余额（自动计算）
-  voucherCode?: string; // 记账凭证号（如"记-001"）
-  createdAt: string;
-  updatedAt: string;
-}
-
-let journalEntriesData: JournalEntry[] = [];
-
-// 获取资金账户列表
-export function getFundAccounts(type?: '银行存款' | '现金') {
-  if (type) {
-    return fundAccounts.filter(acc => acc.accountType === type && acc.status === '启用');
-  }
-  return fundAccounts.filter(acc => acc.status === '启用');
-}
-
-// 获取收支类别列表
-export function getExpenseCategories() {
-  return expenseCategories.filter(cat => cat.status === '启用');
-}
-
-// 获取往来单位列表
-export function getPartners() {
-  return partners.filter(p => p.status === '启用');
-}
-
-// 获取日记账流水
-export function getJournalEntries(accountId?: string, dateFrom?: string, dateTo?: string) {
-  let entries = [...journalEntriesData];
-  
-  if (accountId) {
-    entries = entries.filter(e => e.accountId === accountId);
-  }
-  
-  if (dateFrom) {
-    entries = entries.filter(e => e.date >= dateFrom);
-  }
-  
-  if (dateTo) {
-    entries = entries.filter(e => e.date <= dateTo);
-  }
-  
-  // 按日期排序
-  entries.sort((a, b) => a.date.localeCompare(b.date));
-  
-  return entries;
-}
-
-// 添加日记账流水
-export function addJournalEntry(entry: Omit<JournalEntry, 'id' | 'createdAt' | 'updatedAt'>) {
-  const newEntry: JournalEntry = {
-    ...entry,
-    id: `je${Date.now()}`,
-    createdAt: new Date().toLocaleString('zh-CN'),
-    updatedAt: new Date().toLocaleString('zh-CN')
-  };
-  journalEntriesData = [...journalEntriesData, newEntry];
-  return newEntry;
-}
-
-// 更新日记账流水
-export function updateJournalEntry(id: string, updates: Partial<JournalEntry>) {
-  journalEntriesData = journalEntriesData.map(e =>
-    e.id === id ? { ...e, ...updates, updatedAt: new Date().toLocaleString('zh-CN') } : e
-  );
-}
-
-// 删除日记账流水
-export function deleteJournalEntry(id: string) {
-  journalEntriesData = journalEntriesData.filter(e => e.id !== id);
-}
-
-// 批量更新日记账流水
-export function batchUpdateJournalEntries(ids: string[], updates: Partial<JournalEntry>) {
-  journalEntriesData = journalEntriesData.map(e =>
-    ids.includes(e.id) ? { ...e, ...updates, updatedAt: new Date().toLocaleString('zh-CN') } : e
-  );
-}
-
-// 批量删除日记账流水
-export function batchDeleteJournalEntries(ids: string[]) {
-  journalEntriesData = journalEntriesData.filter(e => !ids.includes(e.id));
-}
-
-// 内部转账数据（UC13）
-export interface InternalTransfer {
-  id: string;
-  transferNumber: string; // 转账单号
-  date: string; // 记账日期
-  fromAccountId: string; // 转出账户ID
-  fromAccountName: string; // 转出账户名称
-  toAccountId: string; // 转入账户ID
-  toAccountName: string; // 转入账户名称
-  amount: number; // 金额
-  remark?: string; // 备注
-  voucherCode?: string; // 记账凭证号
-  createdAt: string;
-  updatedAt: string;
-}
-
-let internalTransfers: InternalTransfer[] = [];
-
-// 获取内部转账列表
-export function getInternalTransfers(dateFrom?: string, dateTo?: string, summary?: string) {
-  let transfers = [...internalTransfers];
-  
-  if (dateFrom) {
-    transfers = transfers.filter(t => t.date >= dateFrom);
-  }
-  
-  if (dateTo) {
-    transfers = transfers.filter(t => t.date <= dateTo);
-  }
-  
-  if (summary) {
-    transfers = transfers.filter(t => t.remark?.includes(summary));
-  }
-  
-  // 按日期降序排序
-  transfers.sort((a, b) => b.date.localeCompare(a.date));
-  
-  return transfers;
-}
-
-// 生成转账单号
-function generateTransferNumber() {
-  const date = new Date();
-  const dateStr = date.toISOString().split('T')[0].replace(/-/g, '');
-  const maxNumber = internalTransfers
-    .filter(t => t.transferNumber.startsWith(`TF-${dateStr}`))
-    .map(t => parseInt(t.transferNumber.split('-')[2] || '0'))
-    .reduce((max, num) => Math.max(max, num), 0);
-  
-  return `TF-${dateStr}-${String(maxNumber + 1).padStart(3, '0')}`;
-}
-
-// 添加内部转账（BR2, BR3：自动在UC11创建两条流水）
-export function addInternalTransfer(transfer: Omit<InternalTransfer, 'id' | 'transferNumber' | 'createdAt' | 'updatedAt'>) {
-  const newTransfer: InternalTransfer = {
-    ...transfer,
-    id: `it${Date.now()}`,
-    transferNumber: generateTransferNumber(),
-    createdAt: new Date().toLocaleString('zh-CN'),
-    updatedAt: new Date().toLocaleString('zh-CN')
-  };
-  
-  internalTransfers = [...internalTransfers, newTransfer];
-  
-  // BR2 & BR3：自动在UC11创建两条流水
-  const fromAccount = fundAccounts.find(a => a.id === transfer.fromAccountId);
-  const toAccount = fundAccounts.find(a => a.id === transfer.toAccountId);
-  
-  if (fromAccount && toAccount) {
-    // 1. 转出账户：支出流水
-    addJournalEntry({
-      accountId: transfer.fromAccountId,
-      accountType: fromAccount.accountType,
-      date: transfer.date,
-      summary: `内部转账至${transfer.toAccountName}`,
-      categoryId: 'exp-internal-out',
-      categoryName: '内部转账-转出',
-      income: 0,
-      expense: transfer.amount,
-      balance: 0 // 将被重新计算
-    });
-    
-    // 2. 转入账户：收入流水
-    addJournalEntry({
-      accountId: transfer.toAccountId,
-      accountType: toAccount.accountType,
-      date: transfer.date,
-      summary: `内部转账自${transfer.fromAccountName}`,
-      categoryId: 'inc-internal-in',
-      categoryName: '内部转账-转入',
-      income: transfer.amount,
-      expense: 0,
-      balance: 0 // 将被重新计算
-    });
-  }
-  
-  return newTransfer;
-}
-
-// 更新内部转账
-export function updateInternalTransfer(id: string, updates: Partial<InternalTransfer>) {
-  internalTransfers = internalTransfers.map(t =>
-    t.id === id ? { ...t, ...updates, updatedAt: new Date().toLocaleString('zh-CN') } : t
-  );
-}
-
-// 删除内部转账
-export function deleteInternalTransfer(id: string) {
-  internalTransfers = internalTransfers.filter(t => t.id !== id);
-}
-
-// ========== 期末结转相关数据 ==========
-
-// 期间锁定状态
-export interface PeriodLock {
-  period: string; // 会计期间，格式：2025-11
-  isLocked: boolean; // 是否已结账锁定
-  lockedAt?: string; // 锁定时间
-  lockedBy?: string; // 锁定人
-}
-
-let periodLocks: PeriodLock[] = [];
-
-// 检查期间是否已锁定
-export function isPeriodLocked(period: string): boolean {
-  const lock = periodLocks.find(l => l.period === period);
-  return lock ? lock.isLocked : false;
-}
-
-// 锁定期间（结账）
-export function lockPeriod(period: string, userName: string) {
-  const existingLock = periodLocks.find(l => l.period === period);
-  
-  if (existingLock) {
-    existingLock.isLocked = true;
-    existingLock.lockedAt = new Date().toLocaleString('zh-CN');
-    existingLock.lockedBy = userName;
-  } else {
-    periodLocks.push({
-      period,
-      isLocked: true,
-      lockedAt: new Date().toLocaleString('zh-CN'),
-      lockedBy: userName
-    });
-  }
-}
-
-// 解锁期间（反结账）
-export function unlockPeriod(period: string) {
-  const lock = periodLocks.find(l => l.period === period);
-  if (lock) {
-    lock.isLocked = false;
-  }
-}
-
-// 获取所有已锁定期间
-export function getLockedPeriods() {
-  return periodLocks.filter(l => l.isLocked);
-}
-
-// 从总分类账获取科目数据（用于期末结转）
-export function getSubjectBalance(subjectCode: string, period: string) {
-  // 获取期初余额
-  const initialBalance = getSubjectInitialBalance(subjectCode);
-  let periodDebitTotal = 0;
-  let periodCreditTotal = 0;
-  
-  // 获取该科目在指定期间的所有已审核凭证
-  const periodVouchers = vouchers.filter(v => 
-    v.status === 'approved' && 
-    v.voucherDate.startsWith(period)
-  );
-  
-  periodVouchers.forEach(voucher => {
-    voucher.lines.forEach((line: any) => {
-      if (line.subjectCode === subjectCode || line.subjectCode?.startsWith(subjectCode)) {
-        periodDebitTotal += parseFloat(line.debitAmount || 0);
-        periodCreditTotal += parseFloat(line.creditAmount || 0);
-      }
-    });
-  });
-  
-  // 计算期末余额 = 期初余额 + 本期借方 - 本期贷方（对于资产类）
-  // 对于损益类，通常期初余额为0，主要看本期发生额
-  const debitTotal = initialBalance.debitBalance + periodDebitTotal;
-  const creditTotal = initialBalance.creditBalance + periodCreditTotal;
-  
-  return {
-    initialDebit: initialBalance.debitBalance,
-    initialCredit: initialBalance.creditBalance,
-    periodDebit: periodDebitTotal,
-    periodCredit: periodCreditTotal,
-    debitTotal,
-    creditTotal,
-    balance: debitTotal - creditTotal
-  };
-}
-
-// 获取损益类科目列表
-export function getProfitLossSubjects() {
-  // 简化版：返回常见的损益类科目
-  return [
-    { code: '6001', name: '主营业务收入', category: '损益类' },
-    { code: '6051', name: '其他业务收入', category: '损益类' },
-    { code: '6901', name: '营业外收入', category: '损益类' },
-    { code: '5001', name: '主营业务成本', category: '损益类' },
-    { code: '5051', name: '其他业务成本', category: '损益类' },
-    { code: '6602', name: '管理费用', category: '损益类' },
-    { code: '6601', name: '销售费用', category: '损益类' },
-    { code: '6603', name: '财务费用', category: '损益类' },
-    { code: '5401', name: '税金及附加', category: '���益类' },
-    { code: '5801', name: '所得税费用', category: '损益类' },
-    { code: '6711', name: '营业外支出', category: '损益类' }
-  ];
-}
-
-// 检查凭证断号
-export function checkVoucherNumberGaps(period: string) {
-  const periodVouchers = vouchers
-    .filter(v => v.voucherDate.startsWith(period))
-    .sort((a, b) => {
-      if (a.voucherType !== b.voucherType) {
-        return a.voucherType.localeCompare(b.voucherType);
-      }
-      return parseInt(a.voucherNumber) - parseInt(b.voucherNumber);
-    });
-  
-  const gaps: string[] = [];
-  
-  // 按凭证字分组检查
-  const typeGroups: { [key: string]: any[] } = {};
-  periodVouchers.forEach(v => {
-    if (!typeGroups[v.voucherType]) {
-      typeGroups[v.voucherType] = [];
-    }
-    typeGroups[v.voucherType].push(v);
-  });
-  
-  Object.keys(typeGroups).forEach(type => {
-    const vouchersOfType = typeGroups[type];
-    for (let i = 0; i < vouchersOfType.length - 1; i++) {
-      const current = parseInt(vouchersOfType[i].voucherNumber);
-      const next = parseInt(vouchersOfType[i + 1].voucherNumber);
-      if (next - current > 1) {
-        gaps.push(`${type}-${String(current + 1).padStart(3, '0')}`);
-      }
-    }
-  });
-  
-  return gaps;
-}
-
-// 检查是否有未审核凭证
-export function hasUnapprovedVouchers(period: string): boolean {
-  return vouchers.some(v => 
-    v.voucherDate.startsWith(period) && 
-    v.status === 'draft'
-  );
-}
-
-// 根据期间和结转类型查找结转凭证
-export function getClosingVoucherByType(period: string, closingType: string): any | null {
-  // 优先使用新的标识字段查询
-  const voucherWithFlags = vouchers.find(v => 
-    v.period === period && 
-    v.closingType === closingType &&
-    v.isClosingVoucher === true
-  );
-  
-  if (voucherWithFlags) {
-    return voucherWithFlags;
-  }
-  
-  // 兼容旧数据：使用摘要关键词查找
-  const keywords: { [key: string]: string } = {
-    'cost': '结转本月销售成本',
-    'tax': '计提本月税金',
-    'income-tax': '计提所得税',
-    'vat': '结转未交增值税',
-    'profit': '结转本期损益',
-    'retained-earnings': '结转本年利润'
-  };
-  
-  const keyword = keywords[closingType];
-  if (!keyword) return null;
-  
-  return vouchers.find(v => 
-    v.voucherDate.startsWith(period) &&
-    v.status === 'approved' &&
-    v.lines.some((line: any) => line.summary.includes(keyword))
-  );
-}
-
-// 获取未分类流水（没有生成凭证的日记账流水）
-export function getUnclassifiedEntries() {
-  return journalEntriesData.filter(entry => !entry.voucherCode);
-}
-
-// 获取未分类流水数量
-export function getUnclassifiedCount() {
-  return getUnclassifiedEntries().length;
-}
-
-// ========== 会计科目管理 ==========
-export interface Subject {
-  id: string;
-  code: string;
-  name: string;
-  category: '资产' | '负债' | '所有者权益' | '成本' | '损益';
-  direction: '借' | '贷';
-  mnemonic?: string;
-  quantityUnit?: string;
-  auxiliaryItems?: string[];
-  isActive: boolean;
-  isBuiltIn: boolean;
-  hasBalance: boolean;
-  hasChildren: boolean;
-  parentId?: string;
-  level: number;
-}
-
-export let subjects: Subject[] = [];
-
-// 获取所有科目
-export function getAllSubjects() {
-  return subjects;
-}
-
-// 获取活动科目
-export function getActiveSubjects() {
-  return subjects.filter(s => s.isActive);
-}
-
-// 添加科目
-export function addSubject(subject: Subject) {
-  subjects = [...subjects, subject];
-}
-
-// 更新科目
-export function updateSubject(id: string, updates: Partial<Subject>) {
-  subjects = subjects.map(s =>
-    s.id === id ? { ...s, ...updates } : s
-  );
-}
-
-// 删除科目
-export function deleteSubject(id: string) {
-  subjects = subjects.filter(s => s.id !== id);
-}
-
-// 批量设置科目
-export function setSubjects(newSubjects: Subject[]) {
-  subjects = newSubjects;
-}
-
-// 获取资金类科目（库存现金1001和银行存款1002的末级科目）
-export function getFundSubjects() {
-  return subjects.filter(s => 
-    s.isActive && 
-    !s.hasChildren &&
-    (s.code.startsWith('1001') || s.code.startsWith('1002'))
-  );
-}
-
-// 激活所有内置科目（从UC02会计科目设置调用）
-export function activateAllBuiltInSubjects() {
-  subjects = subjects.map(s => 
-    s.isBuiltIn ? { ...s, isActive: true } : s
-  );
-}
-
-// ========== 期初数据余额管理 ==========
-export interface InitialBalance {
-  subjectCode: string;
-  subjectName: string;
-  debitAmount: number;
-  creditAmount: number;
-}
-
-export let initialBalanceData: InitialBalance[] = [];
-
-// 获取期初余额
-export function getInitialBalances() {
-  return initialBalanceData;
-}
-
-// 设置期初余额
-export function setInitialBalances(balances: InitialBalance[]) {
-  initialBalanceData = balances;
-}
-
-// 获取某个科目的期初余额净额（从InitialBalance数据结构）
-export function getSubjectInitialBalanceAmount(subjectCode: string): number {
-  const balance = initialBalanceData.find(b => b.subjectCode === subjectCode);
-  if (!balance) return 0;
-  return balance.debitAmount - balance.creditAmount;
-}
-
-// ========== 财务报表数据函数 (UC18, UC19, UC20) ==========
-
-// 获取科目当期余额（来自UC16总分类账）
-export function getSubjectPeriodBalance(subjectCode: string, period: string) {
-  const balance = getSubjectBalance(subjectCode, period);
-  return {
-    debitBalance: balance.debitTotal || 0,
-    creditBalance: balance.creditTotal || 0,
-    balance: balance.balance || 0
-  };
-}
-
-// 获取科目本年累计发生额（来自UC16总分类账）
-export function getSubjectYearTotal(subjectCode: string, year: string) {
-  // 获取该年所有已审核凭证
-  const yearVouchers = getAllVouchers().filter(v => 
-    v.status === 'approved' && 
-    v.voucherDate.startsWith(year)
-  );
-  
-  let debitTotal = 0;
-  let creditTotal = 0;
-  
-  yearVouchers.forEach(voucher => {
-    voucher.lines.forEach((line: any) => {
-      if (line.subjectCode === subjectCode) {
-        debitTotal += parseFloat(line.debitAmount) || 0;
-        creditTotal += parseFloat(line.creditAmount) || 0;
-      }
-    });
-  });
-  
-  return { debitTotal, creditTotal };
-}
-
-// 获取科目本期发生额（来自UC08凭证汇总）
-export function getSubjectPeriodAmount(subjectCode: string, period: string) {
-  // 获取该期间所有已审核凭证
-  const dateFrom = `${period}-01`;
-  const dateTo = `${period}-31`;
-  
-  const periodVouchers = getAllVouchers().filter(v => 
-    v.status === 'approved' && 
-    v.voucherDate >= dateFrom && 
-    v.voucherDate <= dateTo
-  );
-  
-  let debitTotal = 0;
-  let creditTotal = 0;
-  
-  periodVouchers.forEach(voucher => {
-    voucher.lines.forEach((line: any) => {
-      if (line.subjectCode === subjectCode) {
-        debitTotal += parseFloat(line.debitAmount) || 0;
-        creditTotal += parseFloat(line.creditAmount) || 0;
-      }
-    });
-  });
-  
-  return { debitTotal, creditTotal };
-}
-
-// 获取所有货币资金科目余额（用于UC20现金流量表）
-export function getMoneyFundBalance(period: string) {
-  const moneyFundSubjects = subjects.filter(s => 
-    s.isActive && 
-    (s.code.startsWith('1001') || s.code.startsWith('1002'))
-  );
-  
-  let totalInitial = 0;
-  let totalPeriodEnd = 0;
-  
-  moneyFundSubjects.forEach(subject => {
-    // 期初余额
-    const initial = getSubjectInitialBalance(subject.code);
-    totalInitial += (initial.debitBalance - initial.creditBalance);
-    
-    // 期末余额
-    const periodBalance = getSubjectPeriodBalance(subject.code, period);
-    totalPeriodEnd += periodBalance.balance;
-  });
-  
-  return { totalInitial, totalPeriodEnd };
-}
-
-// 按现金流类型汇总出纳日记账（用于UC20现金流量表）
-export function getCashFlowByCategory(period: string) {
-  const dateFrom = `${period}-01`;
-  const dateTo = `${period}-31`;
-  
-  // 筛选期间内的流水
-  const periodEntries = journalEntriesData.filter(e => 
-    e.date >= dateFrom && e.date <= dateTo
-  );
-  
-  // 按收支类别分组
-  const categoryMap = new Map<string, { income: number; expense: number }>();
-  
-  periodEntries.forEach(entry => {
-    const key = entry.categoryName || '未分类';
-    if (!categoryMap.has(key)) {
-      categoryMap.set(key, { income: 0, expense: 0 });
-    }
-    const current = categoryMap.get(key)!;
-    current.income += entry.income;
-    current.expense += entry.expense;
-  });
-  
-  return categoryMap;
-}
-
-// 获取本年所有出纳日记账流水（用于UC20年累计）
-export function getYearCashFlow(year: string) {
-  const yearEntries = journalEntriesData.filter(e => 
-    e.date.startsWith(year)
-  );
-  
-  // 按收支类别分组
-  const categoryMap = new Map<string, { income: number; expense: number }>();
-  
-  yearEntries.forEach(entry => {
-    const key = entry.categoryName || '未分类';
-    if (!categoryMap.has(key)) {
-      categoryMap.set(key, { income: 0, expense: 0 });
-    }
-    const current = categoryMap.get(key)!;
-    current.income += entry.income;
-    current.expense += entry.expense;
-  });
-  
-  return categoryMap;
-}
-
-// ========== 账套状态管理 ==========
-export interface AccountBookStatus {
-  isActivated: boolean; // 是否已启用账套
-  hasClosedPeriod: boolean; // 是否已完成首次结账
-  activatedAt?: string; // 启用时间
-  firstClosedAt?: string; // 首次结账时间
-}
-
-export let accountBookStatus: AccountBookStatus = {
-  isActivated: false,
-  hasClosedPeriod: false
+export const getAllClosingTemplates = async (bookId: string) => {
+  if (!bookId) return [];
+  return client(`/closing-templates?accountBookId=${bookId}`);
 };
 
-// 启用账套
-export function activateAccountBook() {
-  accountBookStatus.isActivated = true;
-  accountBookStatus.activatedAt = new Date().toLocaleString('zh-CN');
-}
+export const addClosingTemplate = async (template: any, bookId: string) => {
+  return client('/closing-templates', { 
+    body: { ...template, accountBookId: bookId } 
+  });
+};
 
-// 标记首次结账
-export function markFirstPeriodClosed() {
-  accountBookStatus.hasClosedPeriod = true;
-  if (!accountBookStatus.firstClosedAt) {
-    accountBookStatus.firstClosedAt = new Date().toLocaleString('zh-CN');
-  }
-}
+export const updateClosingTemplate = async (id: string, template: any) => {
+  return client(`/closing-templates/${id}`, {
+    method: 'PUT',
+    body: template
+  });
+};
 
-// 检查期初数据是否可编辑
-export function canEditInitialData(): { canEdit: boolean; reason?: string } {
-  // 规则1：未启用账套 - 可自由修改
-  if (!accountBookStatus.isActivated) {
-    return { canEdit: true };
-  }
+export const deleteClosingTemplate = async (id: string) => {
+  return client(`/closing-templates/${id}`, { method: 'DELETE' });
+};
+
+export const toggleClosingTemplateEnabled = async (id: string, isEnabled: boolean) => {
+  return client(`/closing-templates/${id}/toggle`, { 
+    method: 'POST',
+    body: { isEnabled }
+  });
+};
+export const me = async () => {
+    try {
+        const response = await client('/user/me');
+        return response; 
+    } catch (error: any) {
+        // ✅ 升级版修复：
+        // 1. 检查状态码 (401/404)
+        // 2. 检查错误信息文本 (包含 'not_found' 或 'NotFound')
+        if (
+            error.status === 401 || 
+            error.status === 404 || 
+            (error.message && error.message.includes('not_found')) ||
+            (error.message && error.message.includes('NotFound'))
+        ) {
+            console.warn("用户校验失败，视为未登录 (自动跳转登录页)");
+            return null; // 返回 null，让 RouteGuard 知道“未登录”，而不是崩馈
+        }
+        
+        // 如果是其他严重错误（如网络断了），继续抛出
+        throw error;
+    }
+};
+// ==========================================
+// 16. 账户激活 API (Activation)
+// ==========================================
+
+// 1. 获取邀请信息 (校验 token 并回显邀请人信息)
+export const activateInfo = async (token: string) => {
+  // 调用后端 GET /api/auth/activate-info
+  return client(`/auth/activate-info?token=${token}`);
+};
+
+// 2. 提交激活 (创建用户)
+export const activate = async (token: string, name: string, password: string) => {
+  // 调用后端 POST /api/auth/activate
+  return client('/auth/activate', { 
+    body: { token, name, password } 
+  });
+};
+// ==========================================
+// 17. 登录 API (Login) - 补全
+// ==========================================
+
+export const login = async (email: string, password: string) => {
+  // 调用后端 POST /api/auth/login
+  return client('/auth/login', { 
+    body: { email, password } 
+  });
+};
+// ==========================================
+// 19. 密码重置 API
+// ==========================================
+
+export const resetRequest = async (email: string) => {
+  // 调用后端 POST /api/auth/reset-request
+  return client('/auth/reset-request', { 
+    body: { email } 
+  });
+};
+// ==========================================
+// 21. 密码重置确认流程 (Verify & Confirm)
+// ==========================================
+
+// 1. 校验重置 Token (页面加载时调用)
+export const resetVerify = async (token: string) => {
+  // GET /api/auth/reset-verify?token=...
+  return client(`/auth/reset-verify?token=${token}`);
+};
+
+// 2. 提交新密码
+export const resetConfirm = async (token: string, password: string) => {
+  // POST /api/auth/reset-confirm
+  return client('/auth/reset-confirm', { 
+    body: { token, password } 
+  });
+};
+// ==========================================
+// 18. 公司注册 API
+// ==========================================
+
+export const registerCompany = async (formData: any) => {
+  console.log('Mock/API Call: registerCompany', formData);
   
-  // 规则3：已完成首次结账 - 禁止修改
-  if (accountBookStatus.hasClosedPeriod) {
-    return { 
-      canEdit: false, 
-      reason: '账套已完成首次结账，期初数据已锁定。需先反初始化并取消结账才能修改。' 
-    };
+  // ✅ 关键：这里需要发起对后端 API 的调用
+  const response = await fetch('http://localhost:4000/api/auth/register-company', {
+      method: 'POST',
+      headers: {
+          'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(formData),
+  });
+
+  if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.message || '注册失败');
   }
-  
-  // 规则2：已启用但未结账 - 管理员可修改
-  return { 
-    canEdit: true,
-    reason: '账套已启用但未结账，管理员可修改期初数据。' 
-  };
-}
+
+  return response.json();
+};
+// ==========================================
+// 20. 现金流量表 API (新增)
+// ==========================================
+
+export const getCashFlowStatementReport = async (bookId: string, period: string) => {
+  if (!bookId) return {};
+  // 调用后端引擎
+  return client(`/reports/cash-flow-statement?accountBookId=${bookId}&period=${period}`);
+};

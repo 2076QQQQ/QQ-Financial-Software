@@ -1,10 +1,12 @@
 import { Building2, CheckCircle2, Mail } from 'lucide-react';
-import { Button } from '../../components/ui/button';
+// ✅ 优化：使用 @ 别名路径
+import { Button } from '@/components/ui/button';
 import { useRouter } from 'next/router';
 
 export default function ResetPasswordSent() {
   const router = useRouter();
   const email = (router.query.email as string) || '';
+  
   return (
     <div className="min-h-screen flex items-center justify-center px-4">
       <div className="w-full max-w-md text-center">
@@ -26,7 +28,7 @@ export default function ResetPasswordSent() {
 
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
           <p className="text-sm text-blue-900">
-            ⏱️ 链接将在 <span className="font-medium">24小时</span> 内有效
+            ⏱️ 链接将在 <span className="font-medium">1小时</span> 内有效
           </p>
         </div>
 
