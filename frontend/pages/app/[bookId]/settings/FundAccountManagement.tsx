@@ -29,7 +29,9 @@ import {
   getAllAuxiliaryItems, 
   getAuxiliaryCategories 
 } from '@/lib/mockData';
-
+interface Props {
+  onNavigate?: (path: string) => Promise<boolean>;
+}
 // --- 类型定义 ---
 interface Subject {
   id: string;
@@ -80,7 +82,7 @@ interface FundAccount {
   accountBookId?: string; 
 }
 
-export default function FundAccountManagement() {
+export default function FundAccountManagement({ onNavigate }: Props) {
   const router = useRouter();
   const [isNextLoading, setIsNextLoading] = useState(false);
   const { bookId } = router.query;
