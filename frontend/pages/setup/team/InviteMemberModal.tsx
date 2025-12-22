@@ -64,18 +64,26 @@ export default function InviteMemberModal({ open, onClose, onInvite, existingEma
     setLoading(true);
     
     try {
-      // ✅ 调用 mockData.ts 中的真实 API
-      await inviteMember(email, role,name);
+            // ✅ 调用 API，并获取返回值
+      const res: any = await inviteMember(email, role, name);
       
-      // 成功提示
-      // 如果没装 sonner，这里改成 alert('邀请已发送')
-      toast.success(`已向 ${email} 发送邀请邮件`);
-      
-      // 通知父组件刷新列表
-      onInvite();
-      
-      // 关闭弹窗
-      handleClose();
+      // ★★★ 核心修改：检查后端是否返回了 manualLink ★★★
+      if (res.manualLink) {
+        // 情况 A：邮件发送失败，但后端生成了链接
+        // 使用 window.prompt 让用户方便复制
+        window.prompt(
+          `邀请已生成，但因网络原因邮件发送超时。\n请手动复制下方链接发给成员：`, 
+          res.manualLink
+        );
+        // 虽然邮件没发出去，但邀请记录有了，所以视为流程完成
+        onInvite(); 
+        handleClose();
+      } else {
+        // 情况 B：邮件发送成功
+        toast.success(`已向 ${email} 发送邀请邮件`);
+        onInvite();
+        handleClose();
+      }
 
     } catch (err: any) {
       console.error("邀请失败:", err);
