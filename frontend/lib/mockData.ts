@@ -4,7 +4,7 @@
 // 修改说明：已全面支持多账套隔离，核心接口强制要求传入 bookId
 // ------------------------------------------------------------------
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || '/api';
 
 interface CustomRequestInit extends Omit<RequestInit, 'body'> {
   body?: any;
@@ -30,7 +30,10 @@ const client = async (endpoint: string, { body, ...customConfig }: CustomRequest
   }
 
   try {
-    const response = await fetch(`${API_BASE}${endpoint}`, config);
+    const url = `${API_BASE}${endpoint}`;
+    console.log('📡 Requesting:', url); // 调试用
+    
+    const response = await fetch(url, config);
 
     if (!response.ok) {
       // ✅ 关键修复：先定义 errorText 变量，再使用它

@@ -11,12 +11,54 @@ const app = express();
 const PORT = process.env.PORT || 4000;
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
 // 1. 配置中间件
+console.log('🌐 允许的前端地址:', FRONTEND_URL);
+
+// ==========================================
+// ✅ CORS 配置 - 完整修复版
+// ==========================================
 app.use(cors({
-  origin:[FRONTEND_URL, 'http://localhost:3000'],
-  credentials: true 
+  origin: function (origin, callback) {
+    // 1. 允许的域名列表
+    const allowedOrigins = [
+      'http://localhost:3000',           // 本地开发
+      'http://localhost:3001',           // 备用端口
+      FRONTEND_URL,                      // 从环境变量读取的生产地址
+      /\.vercel\.app$/,                  // 所有 Vercel 子域名
+      /\.onrender\.com$/                 // 所有 Render 子域名（如果前端也用 Render）
+    ];
+
+    // 2. 日志记录（方便调试）
+    console.log('📨 请求来源 (Origin):', origin);
+
+    // 3. 如果没有 origin（比如 Postman 直接请求），也允许
+    if (!origin) {
+      return callback(null, true);
+    }
+
+    // 4. 检查是否在允许列表中
+    const isAllowed = allowedOrigins.some(allowed => {
+      if (typeof allowed === 'string') {
+        return origin === allowed;
+      }
+      // 正则匹配
+      return allowed.test(origin);
+    });
+
+    if (isAllowed) {
+      console.log('✅ CORS 允许:', origin);
+      callback(null, true);
+    } else {
+      console.warn('❌ CORS 拒绝:', origin);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,  // 允许携带 Cookie
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
 app.use(bodyParser.json());
+
 
 const secret = 'dev_secret_key';
 
@@ -59,7 +101,7 @@ const requireAuth = (req: any, res: any, next: any) => {
 // 1. 认证模块 (Auth)
 // ==========================================
 
-app.post('/auth/check-email', (req, res) => {
+app.post('/api/auth/check-email', (req, res) => {
   const { email } = req.body;
   if (!email) return res.status(400).json({ message: 'Email is required' });
 
