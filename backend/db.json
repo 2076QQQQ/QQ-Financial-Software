@@ -1,0 +1,20 @@
+{
+  "users": [],
+  "companies": [],
+  "invitations": [],
+  "passwordResets": [],
+  "accountBooks": [],
+  "subjects": [],
+  "fundAccounts": [],
+  "auxiliaryCategories": [],
+  "auxiliaryItems": [],
+  "auxiliaryTypes": [],
+  "initialBalances": [],
+  "companyInfo": {},
+  "vouchers": [],
+  "voucherTemplates": [],
+  "closingTemplates": [],
+  "journalEntries": [],
+  "expenseCategories": [],
+  "internalTransfers": []
+}

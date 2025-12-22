@@ -2,7 +2,7 @@
 // 核心 HTTP 请求封装
 // ============================================================================
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
+const API_BASE = '/api';
 // 处理 HTTP 响应的通用逻辑
 const handleResponse = async (res: Response) => {
   const data = await res.json().catch(() => ({}));

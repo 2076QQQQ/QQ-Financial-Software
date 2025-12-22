@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import express from 'express';
+import express, { Router } from 'express';
 import cors from 'cors';
 import bodyParser from 'body-parser';
 import crypto from 'crypto';
@@ -9,10 +9,10 @@ import nodemailer from 'nodemailer';
 
 const app = express();
 const PORT = process.env.PORT || 4000;
-
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
 // 1. 配置中间件
 app.use(cors({
-  origin: 'http://localhost:3000', 
+  origin:[FRONTEND_URL, 'http://localhost:3000'],
   credentials: true 
 }));
 
@@ -59,7 +59,7 @@ const requireAuth = (req: any, res: any, next: any) => {
 // 1. 认证模块 (Auth)
 // ==========================================
 
-app.post('/api/auth/check-email', (req, res) => {
+app.post('/auth/check-email', (req, res) => {
   const { email } = req.body;
   if (!email) return res.status(400).json({ message: 'Email is required' });
 
@@ -2260,7 +2260,8 @@ app.post('/api/team/invite', requireAuth, async (req: any, res) => {
   };
 
   // 4. 准备邮件内容
-  const inviteLink = `http://localhost:3000/join?token=${token}`; // 前端接受邀请页面的地址
+  const frontendBaseUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+  const inviteLink = `${frontendBaseUrl}/join?token=${token}`; // 前端接受邀请页面的地址
   const mailOptions = {
     from: '"财务系统" <3153520738@qq.com>', // 记得改成和你配置一样的邮箱
     to: email,
@@ -2411,7 +2412,8 @@ app.post('/api/team/resend-invite', requireAuth, async (req: any, res) => {
   if (!invite) return res.status(404).json({ message: '邀请记录不存在' });
 
   // 重新生成链接
-  const inviteLink = `http://localhost:3000/join?token=${invite.token}`;
+  const baseUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+  const inviteLink = `${baseUrl}/join?token=${invite.token}`;
   
   // 邮件配置
   const mailOptions = {
@@ -2656,7 +2658,8 @@ app.post('/api/auth/reset-request', async (req: any, res: any) => {
 
   // 4. 发送真实邮件
   // 注意：确保 localhost:3000 是你前端运行的地址
-  const resetLink = `http://localhost:3000/auth/SetNewPassword?token=${token}`;
+  const baseUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+  const resetLink = `${baseUrl}/auth/SetNewPassword?token=${token}`;
   
   const mailOptions = {
     from: '"财务系统管理员" <3153520738@qq.com>', // 必须与上方 auth.user 一致
