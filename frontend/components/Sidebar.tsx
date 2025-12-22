@@ -173,7 +173,7 @@ export default function Sidebar({ className, isLocked = false }: SidebarProps) {
             highlight: !isBookInitialized 
           },
           { id: 'account-book', label: '账套信息', path: `/setup/account-books` }, 
-          { id: 'team', label: '团队管理', path: `${prefix}/setup/team` },
+          { id: 'team', label: '团队管理', path: `/setup/team` },
         ]
       }
     ];
