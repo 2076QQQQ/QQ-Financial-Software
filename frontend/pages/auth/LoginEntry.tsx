@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 // ✅ 1. 定义后端基础地址
 // 优先读取 Vercel 环境变量，如果没有则使用本地调试地址
 // 注意：环境变量末尾已经包含了 "/api"
-const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:4000/api';
+const baseUrl = 'https://qq-financial-software.onrender.com/api';
 
 export default function LoginEntry() {
   const [email, setEmail] = useState('');
