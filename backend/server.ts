@@ -9,7 +9,7 @@ import nodemailer from 'nodemailer';
 
 const app = express();
 const PORT = process.env.PORT || 4000;
-const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
+const FRONTEND_URL = 'https://qq-financial-software.vercel.app';
 // 1. 配置中间件
 console.log('🌐 允许的前端地址:', FRONTEND_URL);
 
@@ -20,7 +20,7 @@ app.use(cors({
   origin: function (origin, callback) {
     // 1. 允许的域名列表
     const allowedOrigins = [
-      'http://localhost:3000',           // 本地开发
+      'https://qq-financial-software.vercel.app',         
       'http://localhost:3001',           // 备用端口
       FRONTEND_URL,                      // 从环境变量读取的生产地址
       /\.vercel\.app$/,                  // 所有 Vercel 子域名
@@ -2302,8 +2302,8 @@ app.post('/api/team/invite', requireAuth, async (req: any, res) => {
   };
 
   // 4. 准备邮件内容
-  const frontendBaseUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-  const inviteLink = `${frontendBaseUrl}/join?token=${token}`; // 前端接受邀请页面的地址
+  const FRONTEND_URL = 'https://qq-financial-software.vercel.app';
+  const inviteLink = `${FRONTEND_URL}/join?token=${token}`; // 前端接受邀请页面的地址
   const mailOptions = {
     from: '"财务系统" <3153520738@qq.com>', // 记得改成和你配置一样的邮箱
     to: email,
@@ -2454,7 +2454,7 @@ app.post('/api/team/resend-invite', requireAuth, async (req: any, res) => {
   if (!invite) return res.status(404).json({ message: '邀请记录不存在' });
 
   // 重新生成链接
-  const baseUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+  const baseUrl = 'https://qq-financial-software.vercel.app';
   const inviteLink = `${baseUrl}/join?token=${invite.token}`;
   
   // 邮件配置
@@ -2700,7 +2700,7 @@ app.post('/api/auth/reset-request', async (req: any, res: any) => {
 
   // 4. 发送真实邮件
   // 注意：确保 localhost:3000 是你前端运行的地址
-  const baseUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+  const baseUrl = 'https://qq-financial-software.vercel.app';
   const resetLink = `${baseUrl}/auth/SetNewPassword?token=${token}`;
   
   const mailOptions = {

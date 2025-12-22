@@ -4,7 +4,7 @@
 // 修改说明：已全面支持多账套隔离，核心接口强制要求传入 bookId
 // ------------------------------------------------------------------
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || '/api';
+const API_BASE = 'https://qq-financial-software.onrender.com/api';
 
 interface CustomRequestInit extends Omit<RequestInit, 'body'> {
   body?: any;
