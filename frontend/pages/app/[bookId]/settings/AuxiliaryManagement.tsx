@@ -7,7 +7,9 @@ import {
   FileSpreadsheet, Download, Loader2, AlertCircle, Upload,
   Settings, Info, LayoutGrid, X
 } from 'lucide-react';
-
+interface AuxiliaryManagementProps {
+  onNavigate: (path: string) => Promise<boolean>;
+}
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -63,7 +65,7 @@ interface AuxiliaryItem {
   isReferenced: boolean;
 }
 
-export default function AuxiliaryManagement() {
+export default function AuxiliaryManagement({ onNavigate }: AuxiliaryManagementProps) {
   const router = useRouter();
   const { bookId } = router.query; 
   const currentBookId = router.isReady ? (Array.isArray(bookId) ? bookId[0] : bookId) : null;
