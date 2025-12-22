@@ -135,7 +135,14 @@ app.post('/api/auth/register-company', async (req, res) => {
   db.update('users', [...(data.users || []), newUser]);
 
   const token = sign({ userId, companyId, role: 'Owner' });
-  res.setHeader('Set-Cookie', [`session=${token}`, 'Path=/', 'HttpOnly', `Max-Age=${60*60*24*7}`].join('; '));
+  res.setHeader('Set-Cookie', [
+  `session=${token}`, 
+  'Path=/', 
+  'HttpOnly', 
+  'SameSite=None',   // 允许跨域
+  'Secure',          // 必须配合 HTTPS (Render 和 Vercel 都是 HTTPS，没问题)
+  `Max-Age=${60 * 60 * 24 * 7}`
+].join('; '));
   
   res.json({ userId, companyId });
 });
@@ -154,13 +161,27 @@ app.post('/api/auth/login', async (req, res) => {
 
   const token = sign({ userId: user.id, companyId: user.companyId, role: user.role, iat: Date.now() });
   
-  res.setHeader('Set-Cookie', [`session=${token}`, 'Path=/', 'HttpOnly', 'SameSite=Lax', `Max-Age=${60 * 60 * 24 * 7}`].join('; '));
+  res.setHeader('Set-Cookie', [
+  `session=${token}`, 
+  'Path=/', 
+  'HttpOnly', 
+  'SameSite=None',   // 允许跨域
+  'Secure',          // 必须配合 HTTPS (Render 和 Vercel 都是 HTTPS，没问题)
+  `Max-Age=${60 * 60 * 24 * 7}`
+].join('; '));
   
   return res.json({ userId: user.id, companyId: user.companyId });
 });
 
 app.post('/api/auth/logout', (req, res) => {
-  res.setHeader('Set-Cookie', [`session=`, 'Path=/', 'HttpOnly', 'Max-Age=0'].join('; '));
+  res.setHeader('Set-Cookie', [
+    `session=`, 
+    'Path=/', 
+    'HttpOnly', 
+    'SameSite=None', // 必须加
+    'Secure',        // 必须加
+    'Max-Age=0'      // 立即过期
+  ].join('; '));
   res.json({ ok: true });
 });
 

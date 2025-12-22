@@ -37,7 +37,7 @@ export default function LoginPassword() {
       // 注意：这里需要确保 Dashboard 页面会调用 /api/user/me 来获取当前账套信息
       // 如果后端没返回默认账套ID，前端可能需要先调一下 me() 获取
       
-      router.push('/app/dashboard'); // 假设这是你的仪表盘入口路由，或者根据实际情况调整
+       router.replace('/app/dashboard');  // 假设这是你的仪表盘入口路由，或者根据实际情况调整
       // router.push('/Dashboard/Dashboard'); // 你之前的路径，如果文件结构是这样也行
 
     } catch (err: any) {

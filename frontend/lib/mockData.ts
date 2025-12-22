@@ -30,8 +30,10 @@ const client = async (endpoint: string, { body, ...customConfig }: CustomRequest
   }
 
   try {
+    console.log('🔍 [Debug] API_BASE is:', API_BASE);
+  console.log('🔍 [Debug] Endpoint is:', endpoint);
     const url = `${API_BASE}${endpoint}`;
-    console.log('📡 Requesting:', url); // 调试用
+    console.log('🚀 [Debug] Final URL:', url);
     
     const response = await fetch(url, config);
 
