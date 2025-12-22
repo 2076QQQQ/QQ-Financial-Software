@@ -2324,7 +2324,7 @@ app.post('/api/team/invite', requireAuth, async (req: any, res) => {
 
   // 4. 准备邮件内容
   const FRONTEND_URL = 'https://qq-financial-software.vercel.app';
-  const inviteLink = `${FRONTEND_URL}/join?token=${token}`; // 前端接受邀请页面的地址
+  const inviteLink = `https://qq-financial-software.vercel.app/join?token=${token}`; 
   const mailOptions = {
     from: '"财务系统" <mqiu175@gmail.com>', // 记得改成和你配置一样的邮箱
     to: email,
@@ -2366,8 +2366,19 @@ app.post('/api/team/invite', requireAuth, async (req: any, res) => {
     res.json({ success: true, message: '邀请已发送' });
 
   } catch (error) {
-    console.error("邮件发送失败:", error);
-    res.status(500).json({ message: '邮件服务配置错误或网络不通' });
+    console.error("❌ [ERROR] 邮件发送失败:", error.code || error.message);
+    
+    // ★★★ 核心修复：即使邮件失败，也视为“邀请成功”，并返回链接给前端 ★★★
+    // 这样就不会报 500 错误，用户体验不会中断
+    
+    db.update('invitations', [...(data.invitations || []), newInvitation]);
+    
+    // 返回 200 (不是 500)，但在 message 里说明情况
+    res.json({ 
+        success: true, 
+        message: '网络原因导致邮件发送失败，请手动复制链接发给成员', 
+        manualLink: inviteLink // 把链接扔回给前端
+    });
   }
 });
 
@@ -2598,12 +2609,13 @@ app.delete('/api/closing-templates/:id', requireAuth, (req: any, res) => {
 // 0. 邮件发送配置 (QQ邮箱)
 // ==========================================
 const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  secure: true,
+  host: 'smtp.gmail.com', // 显式指定主机
+  port: 465,              // 显式指定端口 (SSL)
+  secure: true,           // 使用 SSL
   auth: {
     user: process.env.EMAIL_USER, 
     pass: process.env.EMAIL_PASS  
-  }
+  } 
 });
 
 // ==========================================

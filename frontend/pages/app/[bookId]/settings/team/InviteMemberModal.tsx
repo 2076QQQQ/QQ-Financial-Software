@@ -146,7 +146,7 @@ export default function InviteMemberModal({ open, onClose, onInvite, existingEma
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="Boss">Boss (仅查看)</SelectItem>
+                <SelectItem value="Boss">Boss(全权处理)</SelectItem>
                 <SelectItem value="会计">会计 (全权处理)</SelectItem>
                 <SelectItem value="出纳">出纳 (资金流水)</SelectItem>
               </SelectContent>
