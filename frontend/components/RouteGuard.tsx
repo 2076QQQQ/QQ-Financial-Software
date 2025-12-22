@@ -1,7 +1,7 @@
 // 文件: ./components/RouteGuard.tsx
 
 import { useEffect, useState } from 'react';
-import { me } from '@/lib/api/auth'; 
+import { me } from '@/lib/mockData'; 
 import { useRouter } from 'next/router';
 import { Loader2 } from 'lucide-react';
 

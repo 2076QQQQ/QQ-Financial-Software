@@ -3,7 +3,7 @@ import { useRouter } from 'next/router';
 import { Building2, LogOut, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Sidebar from './Sidebar'; 
-import { me, logout } from '@/lib/api/auth';
+import { me, logout } from '@/lib/mockData';
 
 interface UserStatus {
   user: { email: string; name?: string; companyName?: string };

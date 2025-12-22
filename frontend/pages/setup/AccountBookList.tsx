@@ -24,7 +24,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import AccountBookModal from './AccountBookModal'; 
 import WelcomeModal from '@/pages/setup/WelcomeModal';    
-import { me } from '@/lib/api/auth'; 
+import { me } from '@/lib/mockData'; 
 import { getAccountBooks, addAccountBook, updateAccountBook, deleteAccountBook } from '@/lib/mockData';
 
 type TaxType = '一般纳税人' | '小规模纳税人';

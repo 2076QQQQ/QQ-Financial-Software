@@ -1007,3 +1007,6 @@ export const getCashFlowStatementReport = async (bookId: string, period: string)
   // 调用后端引擎
   return client(`/reports/cash-flow-statement?accountBookId=${bookId}&period=${period}`);
 };
+export const logout = async () => {
+  return client('/auth/logout', { method: 'POST' });
+};
