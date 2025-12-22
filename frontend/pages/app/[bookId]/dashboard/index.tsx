@@ -19,7 +19,8 @@ import {
   getAllVouchers, 
   getJournalEntries, 
   getFundAccounts,
-  me 
+  me,
+  getAccountBooks
 } from '@/lib/mockData';
 
 export default function DashboardPage() {
@@ -30,7 +31,7 @@ export default function DashboardPage() {
   // --- 状态管理 ---
   const [loading, setLoading] = useState(false);
   const [isCheckingStatus, setIsCheckingStatus] = useState(true);
-
+  const [isBookEnabled, setIsBookEnabled] = useState(false);
   const [setupStatus, setSetupStatus] = useState({
     hasAccountBook: false,
     hasSubjects: false,
@@ -91,11 +92,30 @@ export default function DashboardPage() {
 
   // 2. 加载数据
   useEffect(() => {
-    if (router.isReady && currentBookId && isFullyUnlocked) {
-      loadDashboardData();
-    }
+    if (!router.isReady || !currentBookId) return;
+
+    const initLoad = async () => {
+      try {
+        // A. 先检查账套状态 (最优先)
+        const books = await getAccountBooks();
+        const currentBook = books.find((b: any) => b.id === currentBookId);
+        
+        // 如果账套已启用，记录下来
+        const enabled = currentBook?.isInitialized === true;
+        setIsBookEnabled(enabled);
+
+        // B. 如果账套已启用，或者旧的检查逻辑通过，就加载数据
+        if (enabled || isFullyUnlocked) {
+           await loadDashboardData();
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    };
+
+    initLoad();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [router.isReady, currentBookId, isFullyUnlocked]); 
+  }, [router.isReady, currentBookId, isFullyUnlocked]);
 
   const onNavigate = (path: string) => {
       if (!currentBookId) return;
@@ -232,7 +252,7 @@ export default function DashboardPage() {
       );
   }
 
-  if (!isFullyUnlocked) {
+  if (!isFullyUnlocked&& !isBookEnabled) {
     return (
         <div className="p-8 max-w-4xl mx-auto">
             <Card className="bg-slate-50 border-slate-200">
