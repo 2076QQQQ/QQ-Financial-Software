@@ -132,14 +132,20 @@ export default function AccountBookList() {
       if (isEdit) {
           result = await updateAccountBook(payload);
       } else {
-          result = await addAccountBook(payload);
-          // 初始化逻辑：如果是第一个账套，尝试标记初始化完成
-          if (accountBooks.length === 0) {
-             try {
-                await fetch('http://localhost:4000/api/company/account-book/complete', { method: 'POST', credentials: 'include' });
-             } catch (e) { console.warn("Init status update failed", e); }
-          }
-      }
+    result = await addAccountBook(payload);
+    // 初始化逻辑：如果是第一个账套，尝试标记初始化完成
+    if (accountBooks.length === 0) {
+        try {
+            // ✅ 改为相对路径，由 Vercel 的 rewrites 转发给 Render
+            await fetch('/api/company/account-book/complete', { 
+                method: 'POST', 
+                credentials: 'include' 
+            });
+        } catch (e) { 
+            console.warn("Init status update failed", e); 
+        }
+    }
+}
 
       // 如果是新建，直接跳转进账套
       if (!isEdit) {

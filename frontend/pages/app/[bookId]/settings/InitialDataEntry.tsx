@@ -56,12 +56,15 @@ interface FundAccount {
 
 // 模拟获取 initialBalances 的 fetch 函数 (如果 mockData 未导出)
 const fetchInitialBalances = async (bookId: string) => {
-    // 假设后端有这个接口，如果没有，需确保 getAllSubjects 返回了正确数据
-    // 这里为了保险，我们复用 mockData 的 client 或者直接 fetch
     try {
-        const res = await fetch(`http://localhost:4000/api/initial-balances?accountBookId=${bookId}`);
+        // ✅ 改为相对路径 /api/... 
+        // 这样它会经过 next.config.js 的代理，自动转发到 Render 后端
+        const res = await fetch(`/api/initial-balances?accountBookId=${bookId}`);
+        
         if (res.ok) return await res.json();
-    } catch (e) { console.warn("Fetch initial balances failed, falling back to subjects"); }
+    } catch (e) { 
+        console.warn("Fetch initial balances failed, falling back to subjects"); 
+    }
     return [];
 };
 
@@ -132,13 +135,15 @@ export default function InitialDataEntry() {
         // 注意：这里需要确保你的后端 server.ts 提供了这个 GET 接口，如果没有，请确保 getAllSubjects 返回了最新的 initialBalance
         let rawBalances = [];
         try {
-             // 尝试调用后端，如果后端没写这个GET接口，会 fallback 到 catch
-             // 也可以直接用 mockData 的 fetch，这里用 fetch 模拟
-             const res = await fetch(`http://localhost:4000/api/initial-balances?accountBookId=${currentBookId}`);
-             if (res.ok) rawBalances = await res.json();
-        } catch (e) {
-             console.log("Independent balances fetch failed, relying on subjects data");
-        }
+    // ✅ 修改为相对路径，这样它会走 Vercel 的代理转发到 Render
+    const res = await fetch(`/api/initial-balances?accountBookId=${currentBookId}`);
+    
+    if (res.ok) {
+        rawBalances = await res.json();
+    }
+} catch (e) {
+    console.log("Independent balances fetch failed, relying on subjects data");
+}
 
         // 3. 确定账套状态
         const currentBook = books?.find((b: any) => b.id === currentBookId);
