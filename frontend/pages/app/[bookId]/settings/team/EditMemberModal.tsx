@@ -152,7 +152,7 @@ export default function EditMemberModal({ open, onClose, onSave, member, allMemb
                 <SelectItem value="Boss">
                   <div className="flex flex-col text-left">
                     <span className="font-medium">Boss / 管理层</span>
-                    <span className="text-xs text-gray-500">仅审核和查看报表</span>
+                    <span className="text-xs text-gray-500">凭证录入、报表、审核</span>
                   </div>
                 </SelectItem>
                 <SelectItem value="会计">

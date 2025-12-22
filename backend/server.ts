@@ -2326,7 +2326,7 @@ app.post('/api/team/invite', requireAuth, async (req: any, res) => {
   const FRONTEND_URL = 'https://qq-financial-software.vercel.app';
   const inviteLink = `${FRONTEND_URL}/join?token=${token}`; // 前端接受邀请页面的地址
   const mailOptions = {
-    from: '"财务系统" <3153520738@qq.com>', // 记得改成和你配置一样的邮箱
+    from: '"财务系统" <mqiu175@gmail.com>', // 记得改成和你配置一样的邮箱
     to: email,
     subject: `【邀请】加入 ${companyName} 的财务团队`,
     html: `
@@ -2480,7 +2480,7 @@ app.post('/api/team/resend-invite', requireAuth, async (req: any, res) => {
   
   // 邮件配置
   const mailOptions = {
-    from: '"小微财务团队" <3153520738@qq.com>', // 记得改成你的邮箱配置
+    from: '"小微财务团队" <mqiu175@gmail.com>', // 记得改成你的邮箱配置
     to: invite.email,
     subject: `【提醒】请接受加入财务团队的邀请`,
     html: `
@@ -2598,7 +2598,7 @@ app.delete('/api/closing-templates/:id', requireAuth, (req: any, res) => {
 // 0. 邮件发送配置 (QQ邮箱)
 // ==========================================
 const transporter = nodemailer.createTransport({
-  service: 'qq',
+  service: 'gmail',
   secure: true,
   auth: {
     user: process.env.EMAIL_USER, 
@@ -2725,7 +2725,7 @@ app.post('/api/auth/reset-request', async (req: any, res: any) => {
   const resetLink = `${baseUrl}/auth/SetNewPassword?token=${token}`;
   
   const mailOptions = {
-    from: '"财务系统管理员" <3153520738@qq.com>', // 必须与上方 auth.user 一致
+    from: '"财务系统管理员" <mqiu175@gmail.com>', // 必须与上方 auth.user 一致
     to: email, 
     subject: '【财务系统】请重置您的密码',
     html: `
