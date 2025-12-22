@@ -67,7 +67,7 @@ export const checkEmail = (email: string) => post('/api/auth/check-email', { ema
 export const login = (email: string, password: string) => post('/api/auth/login', { email, password });
 export const logout = () => post('/api/auth/logout');
 export const registerCompany = (email: string, name: string, companyName: string, password: string) => post('/api/auth/register-company', { email, name, companyName, password });
-export const me = () => get('/api/user/me');
+export const me = () => get('/user/me');
 export const activateInfo = (token: string) => get(`/api/auth/activate?token=${encodeURIComponent(token)}`);
 export const activate = (token: string, name: string, password: string) => post('/api/auth/activate', { token, name, password });
 export const resetRequest = (email: string) => post('/api/auth/reset-request', { email });
