@@ -1,10 +1,14 @@
 import { useState } from 'react';
 import { useRouter } from 'next/router';
 import { Building2, Loader2 } from 'lucide-react';
-// ✅ 优化：使用 @ 别名路径
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+
+// ✅ 1. 定义后端基础地址
+// 优先读取 Vercel 环境变量，如果没有则使用本地调试地址
+// 注意：环境变量末尾已经包含了 "/api"
+const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:4000/api';
 
 export default function LoginEntry() {
   const [email, setEmail] = useState('');
@@ -13,7 +17,6 @@ export default function LoginEntry() {
   const router = useRouter();
 
   const validateEmail = (email: string) => {
-    // ✅ 修复：移除了之前的乱码字符，使用标准邮箱正则
     const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return regex.test(email);
   };
@@ -30,9 +33,14 @@ export default function LoginEntry() {
     setLoading(true);
 
     try {
-      // 直接调用后端接口，逻辑正确
-      // 只要你的 server.ts 在运行，这里就能通
-      const response = await fetch('/api/auth/check-email', {
+      // ✅ 2. 拼接完整 URL
+      // baseUrl 已经是 ".../api"，所以这里只需要接 "/auth/check-email"
+      // 最终结果类似: https://qq-financial...onrender.com/api/auth/check-email
+      const targetUrl = `${baseUrl}/auth/check-email`;
+      
+      console.log('正在请求:', targetUrl); // 方便调试查看真实请求地址
+
+      const response = await fetch(targetUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -41,7 +49,7 @@ export default function LoginEntry() {
       });
 
       if (!response.ok) {
-        throw new Error('网络请求失败');
+        throw new Error(`网络请求失败: ${response.status}`);
       }
 
       const data = await response.json();
@@ -55,7 +63,7 @@ export default function LoginEntry() {
       }
     } catch (err) {
       console.error(err);
-      setError('检查邮箱时出错，请确保后端服务已启动 (端口 4000)。');
+      setError('检查邮箱时出错，请确保后端服务已启动。');
       setLoading(false);
     }
   };
