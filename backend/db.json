@@ -36,8 +36,8 @@
       "createdAt": "2025-12-21T17:08:44.088Z",
       "updatedAt": "2025-12-21T17:18:32.935Z",
       "initializedAt": "2025-12-21T17:12:49.091Z",
-      "status": "closed",
-      "lastClosedPeriod": "2025-12"
+      "status": "active",
+      "lastClosedPeriod": "null"
     }
   ],
   "invitations": [],
