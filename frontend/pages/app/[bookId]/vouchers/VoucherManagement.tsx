@@ -46,7 +46,7 @@ import {
 } from '@/lib/mockData';
 
 import { usePermission } from '@/lib/hooks/usePermission';
-const [isProcessing, setIsProcessing] = useState(false);
+
 interface VoucherLine {
   id: string;
   summary: string;
@@ -82,7 +82,7 @@ export default function VoucherManagement() {
   const router = useRouter();
   const { bookId } = router.query;
   const currentBookId = Array.isArray(bookId) ? bookId[0] : bookId;
-  
+  const [isProcessing, setIsProcessing] = useState(false);
   const { canAudit, loading: permLoading } = usePermission();
 
   // --- 状态定义 ---

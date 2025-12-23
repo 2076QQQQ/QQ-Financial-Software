@@ -1,3 +1,4 @@
+"use client";
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 
@@ -72,11 +73,12 @@ interface Subject {
 }
 
 const inputClass = "bg-white border-gray-300 shadow-sm focus:border-blue-500 transition-colors";
-const [isGenerating, setIsGenerating] = useState(false);
+
 
 export default function CashJournal() {
   const router = useRouter();
   const { bookId } = router.query;
+  const [isGenerating, setIsGenerating] = useState(false);
 
   const [activeTab, setActiveTab] = useState<'银行存款' | '现金'>('银行存款');
   const [isLoading, setIsLoading] = useState(false); 
