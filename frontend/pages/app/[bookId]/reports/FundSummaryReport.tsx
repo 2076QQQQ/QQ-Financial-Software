@@ -27,7 +27,7 @@ interface AccountSummary {
   periodExpense: number;
   endingBalance: number;
 }
-const [isLoading, setIsLoading] = useState(false); 
+
 interface SubjectSummary {
   type: 'income' | 'expense' | 'uncategorized';
   categoryName: string;
@@ -37,6 +37,7 @@ interface SubjectSummary {
 }
 
 export default function FundSummaryReport() {
+  const [isLoading, setIsLoading] = useState(false); 
   const router = useRouter();
   const { bookId } = router.query;
   const currentBookId = Array.isArray(bookId) ? bookId[0] : bookId;
