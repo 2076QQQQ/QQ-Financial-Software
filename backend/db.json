@@ -1,9 +1,47 @@
 {
-  "users": [],
-  "companies": [],
+  "users": [
+    {
+      "id": "user_1766336879168",
+      "email": "teacher@demo.com",
+      "name": "演示管理员(老师)",
+      "passwordHash": "$2b$10$EixZaYGHNO/4j5jV5n5xO.1c1c1c1c1c1c1c1c1c1c1c1",
+      "companyId": "comp_1766336879168",
+      "role": "Owner",
+      "status": "Active"
+    }
+  ],
+  "companies": [
+    {
+      "id": "comp_1766336879168",
+      "name": "演示专用企业AAA",
+      "has_account_book": true
+    }
+  ],
+  "accountBooks": [
+    {
+      "id": "ab_1766336924088",
+      "companyId": "comp_1766336879168",
+      "name": "2025演示账套",
+      "period_start": "2025-12-18",
+      "review_enabled": true,
+      "isActive": true,
+      "fiscalYearStartMonth": 1,
+      "taxType": "一般纳税人",
+      "defaultTaxRate": 13,
+      "subjectsConfigured": true,
+      "auxiliaryConfigured": false,
+      "fundsConfigured": true,
+      "isInitialized": true,
+      "hadRecords": false,
+      "createdAt": "2025-12-21T17:08:44.088Z",
+      "updatedAt": "2025-12-21T17:18:32.935Z",
+      "initializedAt": "2025-12-21T17:12:49.091Z",
+      "status": "closed",
+      "lastClosedPeriod": "2025-12"
+    }
+  ],
   "invitations": [],
   "passwordResets": [],
-  "accountBooks": [],
   "subjects": [],
   "fundAccounts": [],
   "auxiliaryCategories": [],

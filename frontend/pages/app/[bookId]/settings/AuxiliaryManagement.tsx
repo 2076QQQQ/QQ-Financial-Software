@@ -212,39 +212,103 @@ export default function AuxiliaryManagement({ onNavigate }: AuxiliaryManagementP
 
   const handleSaveItem = async () => {
     if (!currentBookId || !activeCategoryId) return;
-    if (!itemFormData.name.trim()) return alert('请输入名称');
+    
+    // 获取去除空格后的值
+    const name = itemFormData.name.trim();
+    const code = itemFormData.code.trim();
+
+    // 基础非空校验
+    if (!name) return toast.error('请输入名称');
+    // 如果编码允许自动生成或为空，可以去掉下面这行；但通常建议编码必填
+    if (!code) return toast.error('请输入编码'); 
+
+    // ✅ 校验 BR1: 同一类别下“辅助名称”必须唯一
+    const isNameDuplicate = items.some(item => 
+        item.name === name && 
+        item.id !== editItemTarget?.id // 编辑模式下，排除自己
+    );
+
+    if (isNameDuplicate) {
+        toast.error("名称已存在，请重新输入"); // 需求要求的提示
+        return;
+    }
+
+    // ✅ 校验 BR1: 同一类别下“辅助编码”必须唯一
+    const isCodeDuplicate = items.some(item => 
+        item.code === code && 
+        item.id !== editItemTarget?.id // 编辑模式下，排除自己
+    );
+
+    if (isCodeDuplicate) {
+        toast.error("编码已存在，请重新输入");
+        return;
+    }
     
     setIsLoading(true);
     try {
         if (editItemTarget) {
-          await updateAuxiliaryItem({ ...editItemTarget, ...itemFormData });
+          // 这里的 ...itemFormData 包含了我们 trim 过的 name 和 code 吗？
+          // 注意：state 里的 itemFormData 可能没 trim，最好显式传入
+          await updateAuxiliaryItem({ 
+              ...editItemTarget, 
+              name, 
+              code, 
+              isActive: itemFormData.isActive 
+          });
+          toast.success("更新成功");
         } else {
           await addAuxiliaryItem({ 
               categoryId: activeCategoryId, 
-              ...itemFormData, 
+              name,
+              code,
+              isActive: itemFormData.isActive,
               isReferenced: false 
           }, currentBookId);
+          toast.success("创建成功");
         }
         await loadItems();
         setShowItemModal(false);
     } catch (e) {
         console.error(e);
-        alert('保存失败');
+        toast.error('保存失败');
     } finally {
         setIsLoading(false);
     }
   };
 
   const handleDeleteItem = async (item: AuxiliaryItem) => {
-    if (item.isReferenced) return alert('该项目已被引用，无法删除');
-    if (item.isActive) return alert('必须先停用该项目，才能删除');
+    // ✅ 校验 BR2: 已被引用的项目不能删除
+    if (item.isReferenced) {
+        // 弹出需求指定的提示文案
+        toast.error("该项目已被使用，无法删除，您可将其状态设置为停用");
+        return;
+    }
+
+    // 辅助校验：通常为了数据安全，要求先停用再删除（保留原逻辑，改用 toast）
+    if (item.isActive) {
+        toast.error('必须先停用该项目，才能删除');
+        return;
+    }
+
+    // 二次确认
+    // 使用 window.confirm 或者你可以换成更漂亮的 AlertDialog，这里为了逻辑清晰沿用 confirm
+    if (!window.confirm(`确定要删除档案“${item.name}”吗？`)) {
+        return;
+    }
 
     try {
         await deleteAuxiliaryItem(item.id);
+        toast.success("删除成功");
+        
+        // 如果删除了当前选中的删除目标（针对 AlertDialog 的状态清除）
+        if (deleteItemTarget?.id === item.id) {
+            setDeleteItemTarget(null);
+        }
+        
         await loadItems();
-        setDeleteItemTarget(null);
     } catch (e) {
-        alert('删除失败');
+        console.error(e);
+        toast.error('删除失败');
     }
   };
 

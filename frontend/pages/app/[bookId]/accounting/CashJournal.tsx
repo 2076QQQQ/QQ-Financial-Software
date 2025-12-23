@@ -72,6 +72,7 @@ interface Subject {
 }
 
 const inputClass = "bg-white border-gray-300 shadow-sm focus:border-blue-500 transition-colors";
+const [isGenerating, setIsGenerating] = useState(false);
 
 export default function CashJournal() {
   const router = useRouter();
@@ -490,6 +491,8 @@ export default function CashJournal() {
   };
 
   const generateSingleVouchers = async (entriesList: JournalEntry[], bookId: string) => {
+    if (isGenerating) return; // 🔒 锁：如果在生成中，直接退出
+    setIsGenerating(true);    // 🔒 上锁
       try {
         const allVouchers = await getAllVouchers(bookId);
         let maxNum = 0;
@@ -604,10 +607,13 @@ export default function CashJournal() {
       } catch (e) {
           console.error(e);
           toast.error("生成失败");
-      }
+      }finally {
+        setIsGenerating(false); // 🔒 解锁
+    }
   };
 
   const confirmGenerateVouchers = async () => {
+    if (isGenerating) return;
     const currentBookId = Array.isArray(bookId) ? bookId[0] : bookId;
     if (!currentBookId) return;
 
@@ -626,6 +632,7 @@ export default function CashJournal() {
         await generateSingleVouchers(validEntries, currentBookId);
         return;
     }
+    setIsGenerating(true);
 
     try {
       const firstDate = validEntries[0].date;
@@ -764,6 +771,8 @@ export default function CashJournal() {
     } catch (error) {
       console.error(error);
       toast.error('生成凭证失败');
+    }finally {
+        setIsGenerating(false); // 🔒 解锁
     }
   };
 

@@ -411,6 +411,10 @@ export default function SubjectManagement() {
   };
 
   const handleAddChildSubject = (parent: Subject) => {
+    if (!parent.isActive) {
+        toast.error("上级科目已停用，无法增加子科目");
+        return;
+    }
     setEditTarget(null);
     setParentSubject(parent);
     setFormData({ name: '', code: generateNextCode(parent.category, parent.code), quantityUnit: '', auxiliaryItems: [], isActive: true });
@@ -439,6 +443,36 @@ export default function SubjectManagement() {
     if (!currentBookId) return;
     if (!formData.name.trim()) { toast.error('请输入科目名称'); return; }
     if (!formData.code.trim()) { toast.error('请输入科目编码'); return; }
+    const isNameDuplicate = subjects.some(s => 
+        s.name === formData.name.trim() && 
+        s.id !== editTarget?.id // 如果是编辑模式，排除当前正在编辑的这个
+    );
+
+    if (isNameDuplicate) {
+        toast.error("科目名称已存在，请使用其他名称"); // 弹出提示
+        return; // 阻止保存
+    }
+
+    // ✅ 修改 4: 停用科目的逻辑校验
+    // 只有在编辑模式，且试图将 isActive 设为 false 时才检查
+    if (editTarget && !formData.isActive && editTarget.isActive) {
+        
+        // 校验 A: 是否有未停用的子科目
+        const hasActiveChildren = subjects.some(s => s.parentId === editTarget.id && s.isActive);
+        if (hasActiveChildren) {
+            toast.error("请先停用其所有子科目"); // 用例提示
+            return;
+        }
+
+        // 校验 B: 是否有余额或已使用
+        // 前端 Subject 接口有 hasBalance 字段，通常后端会根据凭证和余额表计算这个字段
+        // 如果后端没返回 hadRecords(是否有业务记录)，通常 hasBalance=true 就代表有数据
+        if (editTarget.hasBalance) {
+            toast.error("该科目存在余额或已在本期使用，无法停用"); // 用例提示
+            return;
+        }
+    }
+
 
     try {
         if (editTarget) {
@@ -732,7 +766,7 @@ export default function SubjectManagement() {
             <div className="space-y-1.5 pt-2">
               <Label className="text-xs text-gray-500 uppercase font-bold tracking-wider">状态设置</Label>
               <div className="flex gap-6 mt-1">
-                 <label className="flex items-center space-x-2 cursor-pointer group">
+                 <label className="flex items-center space-x-2 cursor-pointer group" onClick={() => setFormData({ ...formData, isActive: true })}>
                     <RadioGroup value={formData.isActive ? 'true' : 'false'} onValueChange={(v) => setFormData({ ...formData, isActive: v === 'true' })} className="hidden"/>
                     <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${formData.isActive ? 'border-blue-600' : 'border-gray-300 group-hover:border-gray-400'}`}>
                         {formData.isActive && <div className="w-2 h-2 rounded-full bg-blue-600" />}

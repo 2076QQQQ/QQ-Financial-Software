@@ -214,14 +214,36 @@ app.get('/api/user/me', requireAuth, (req: any, res) => {
 // ==========================================
 app.get('/api/settings/account-books', requireAuth, (req: any, res) => {
     const data = db.get();
+    const companyId = req.user.companyId;
     const books = (data.accountBooks || []).filter((b: any) => b.companyId === req.user.companyId);
-    res.json(books);
+    const booksWithStatus = books.map((book: any) => {
+        // 检查凭证
+        const hasVouchers = (data.vouchers || []).some((v: any) => v.accountBookId === book.id);
+        // 检查日记账
+        const hasJournal = (data.journalEntries || []).some((j: any) => j.accountBookId === book.id);
+        // 检查是否有非零的期初余额 (可选，如果你认为录入了期初也算业务数据的话)
+        const hasBalance = (data.initialBalances || []).some((b: any) => b.accountBookId === book.id && Math.abs(b.initialBalance) > 0);
+
+        return {
+            ...book,
+            // 只要有任意一种数据，标记为 hadRecords = true
+            hadRecords: hasVouchers || hasJournal || hasBalance
+        };
+    });
+
+    res.json(booksWithStatus);
 });
 
 app.post('/api/settings/account-books', requireAuth, (req: any, res) => {
     const { name, startPeriod, requiresAudit, isActive, fiscalYearStartMonth, taxType, defaultTaxRate } = req.body;
     const data = db.get();
+    const exists = (data.accountBooks || []).some((b: any) => 
+        b.companyId === req.user.companyId && b.name === name
+    );
     
+    if (exists) {
+        return res.status(400).json({ message: '账套名称已存在' });
+    }
     const newBook = {
         id: `ab_${Date.now()}`,
         companyId: req.user.companyId,
@@ -262,6 +284,30 @@ app.put('/api/settings/account-books', requireAuth, (req: any, res) => {
     const index = list.findIndex((b: any) => b.id === id && b.companyId === req.user.companyId);
     
     if (index > -1) {
+      // 获取旧的账套信息（用于对比）
+        const oldBook = list[index];
+
+        
+        // 获取新旧日期 (兼容 startPeriod 和 period_start 两种写法)
+        const newStartPeriod = updates.startPeriod || updates.period_start;
+        const oldStartPeriod = oldBook.period_start || oldBook.startPeriod;
+
+        // 只有当用户试图【修改日期】时，才进行检查
+        if (newStartPeriod && newStartPeriod !== oldStartPeriod) {
+            
+            // 检查是否有凭证
+            const hasVouchers = (data.vouchers || []).some((v: any) => v.accountBookId === id);
+            // 检查是否有日记账
+            const hasJournal = (data.journalEntries || []).some((j: any) => j.accountBookId === id);
+            
+            // 如果有数据，直接报错，拦截后续操作！
+            if (hasVouchers || hasJournal) {
+                console.warn(`[Security] 拦截非法日期修改: 账套 ${id} 已有业务数据`);
+                return res.status(403).json({ 
+                    message: '该账套已存在业务数据（凭证或日记账），为保证数据安全，禁止修改启用期间！' 
+                });
+            }
+        }
         // 执行更新 (混合旧数据 + 新数据)
         list[index] = { ...list[index], ...updates, updatedAt: new Date().toISOString() };
         db.update('accountBooks', list);

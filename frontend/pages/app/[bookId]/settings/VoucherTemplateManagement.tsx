@@ -127,6 +127,35 @@ export default function VoucherTemplateManagement() {
     lines: [],
     createdAt: ''
   });
+  const handleBatchUnAudit = async () => {
+    const candidates = templates.filter(t => selectedIds.includes(t.id) && t.status === '已启用');
+    
+    if (candidates.length === 0) return;
+
+    // ✅ 核心校验：检查是否有“已被引用”的模板
+    const referencedTemplates = candidates.filter(t => t.isReferenced);
+
+    if (referencedTemplates.length > 0) {
+      // 如果发现被引用的模板，拦截操作并提示具体的模板名称
+      const names = referencedTemplates.map(t => t.name).join('、');
+      return alert(`操作失败！\n以下模板已被使用生成凭证，禁止反审核：\n\n${names}`);
+    }
+
+    // 2. 执行反审核（只有通过校验才执行）
+    setIsLoading(true); // 加上 loading 体验更好
+    try {
+      await Promise.all(candidates.map(t => updateVoucherTemplate(t.id, { ...t, status: '待审核' })));
+      await loadTemplates();
+      setSelectedIds([]);
+      // 可以加个提示
+      // toast.success("反审核成功"); 
+    } catch (e) {
+      console.error(e);
+      alert("操作失败");
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   // 1. 加载模板 (增加严格过滤)
   const loadTemplates = async () => {
@@ -278,6 +307,11 @@ export default function VoucherTemplateManagement() {
   };
 
   const canDelete = (template: VoucherTemplate): boolean => {
+    // 规则 1: 必须是“待审核”或“已驳回”状态才能删 (已启用的不让删，防止误删正在用的)
+    const isStatusAllow = template.status === '待审核' || template.status === '已驳回';
+    
+    // 规则 2: 绝对不能已被引用
+    const isNotReferenced = !template.isReferenced;
     return (template.status === '待审核' || template.status === '已驳回') && !template.isReferenced;
   };
 
@@ -334,6 +368,14 @@ export default function VoucherTemplateManagement() {
     if (!currentBookId) return;
 
     if (!formData.name.trim()) return alert("请输入模板名称");
+    const isDuplicateName = templates.some(t => 
+      t.name === formData.name.trim() && 
+      t.id !== editTarget?.id // 编辑模式下排除自己
+    );
+
+    if (isDuplicateName) {
+      return alert("模板名称已存在，请使用其他名称");
+    }
     for (const entry of formData.lines) {
       if (!entry.summary.trim()) return alert('所有分录行的摘要不能为空');
       if (!entry.subjectId) return alert('所有分录行必须选择会计科目');
@@ -400,6 +442,15 @@ export default function VoucherTemplateManagement() {
             >
               审核通过
             </Button>
+            <Button 
+    size="sm" 
+    variant="outline"
+    onClick={handleBatchUnAudit} // 需要定义这个函数
+    disabled={selectedIds.length === 0 || !templates.some(t => selectedIds.includes(t.id) && t.status === '已启用')||
+    templates.some(t => selectedIds.includes(t.id) && t.isReferenced)}
+  >
+    反审核
+  </Button>
             <Button 
               size="sm" 
               variant="outline"
@@ -493,7 +544,11 @@ export default function VoucherTemplateManagement() {
                             </div>
                           </TooltipTrigger>
                           {!canDelete(template) && (
-                            <TooltipContent><p className="text-xs">{template.isReferenced ? '已引用不可删' : '仅待审核/驳回可删'}</p></TooltipContent>
+                            <TooltipContent><p className="text-xs">{template.isReferenced 
+            ? '该模板已被引用，无法删除' 
+            : template.status === '已启用' 
+              ? '请先反审核后再删除' 
+              : '无法删除'}</p></TooltipContent>
                           )}
                         </Tooltip>
                       </TooltipProvider>

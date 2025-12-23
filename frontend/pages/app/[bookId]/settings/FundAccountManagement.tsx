@@ -246,9 +246,32 @@ export default function FundAccountManagement({ onNavigate }: Props) {
   const handleSave = async () => {
     if (!currentBookId) return;
 
-    if (!formData.accountName.trim()) { toast.error('请输入账户名称'); return; }
+    // ✅ 改名：使用 inputName 避免与全局 name 冲突
+    const inputName = formData.accountName.trim();
+    
+    // 基础校验
+    if (!inputName) { toast.error('请输入账户名称'); return; } // 使用 inputName
     if (!formData.relatedSubjectId) { toast.error('请选择关联会计科目'); return; }
     if (activeTab === '银行存款' && !formData.bankCardNumber.trim()) { toast.error('请输入银行卡号'); return; }
+
+    // ✅ 校验 6a: 编码或名称重复
+    const isNameDuplicate = accounts.some(acc => 
+        acc.accountName === inputName && // 使用 inputName
+        acc.id !== editTarget?.id 
+    );
+    if (isNameDuplicate) {
+        toast.error("账户名称已存在，请重新输入");
+        return;
+    }
+
+    const isCodeDuplicate = accounts.some(acc => 
+        acc.accountCode === formData.accountCode && 
+        acc.id !== editTarget?.id
+    );
+    if (isCodeDuplicate) {
+        toast.error("账户编码已存在，请重新输入");
+        return;
+    }
 
     const selectedSubject = availableSubjects.find(s => s.id === formData.relatedSubjectId);
     
@@ -307,8 +330,22 @@ export default function FundAccountManagement({ onNavigate }: Props) {
   };
 
   const handleDelete = async (account: FundAccount) => {
-    if (account.isReferenced) return toast.error('该账户已被业务引用，无法删除');
-    if (!window.confirm(`确定要删除账户 "${account.accountName}" 吗？`)) return;
+    const hasBalance = Math.abs(Number(account.initialBalance)) > 0;
+    
+    if (account.isReferenced || hasBalance) {
+        toast.error("该账户已被使用（或有期初余额），无法删除，请使用‘编辑’功能将其‘停用’");
+        return;
+    }
+
+    // ✅ 校验 1b: 状态仍为“启用” (BR5)
+    if (account.status === '启用') {
+        toast.error("请先将账户状态设为‘停用’后才能删除");
+        return;
+    }
+
+    // 二次确认
+    if (!window.confirm(`确定要物理删除账户 "${account.accountName}" 吗？此操作不可恢复。`)) return;
+
     try {
       await deleteFundAccount(account.id);
       await loadAccounts(); 

@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { me } from '@/lib/mockData'; 
 import { useRouter } from 'next/router';
 import { Loader2 } from 'lucide-react';
-
+import { toast } from 'sonner'; 
 // 定义用户状态的类型
 interface UserStatus {
   user: {
@@ -35,6 +35,35 @@ export default function RouteGuard({ children }: { children: any }) {
     '/setup/CreateCompany',
     '/join'
   ];
+  useEffect(() => {
+    const handleRouteChangeStart = (url: string) => {
+      // 1. 检查是否被锁定
+      const isLocked = typeof window !== 'undefined' && localStorage.getItem('TRIAL_BALANCE_ERROR') === 'true';
+      
+      // 2. 如果被锁定，且目标页面不是“期初数据录入页”
+      // 注意：这里检查 URL 是否包含 InitialDataEntry，防止误判
+      if (isLocked && !url.includes('/settings/InitialDataEntry')) {
+        
+        // 3. 给出提示
+        toast.error("期初数据试算不平衡，系统已锁定！请先调平借贷差额后再离开。", {
+          duration: 4000,
+        });
+
+        // 4. 🔴 抛出错误以强行中止 Next.js 的路由跳转
+        // 这是 Next.js Pages Router 拦截跳转的标准 Hack 方法
+        router.events.emit('routeChangeError');
+        throw 'Abort route change due to trial balance imbalance';
+      }
+    };
+
+    // 注册监听器
+    router.events.on('routeChangeStart', handleRouteChangeStart);
+
+    // 清理监听器
+    return () => {
+      router.events.off('routeChangeStart', handleRouteChangeStart);
+    };
+  }, [router]);
 
   useEffect(() => {
     // 标记组件是否挂载，防止异步操作导致的内存泄漏警告

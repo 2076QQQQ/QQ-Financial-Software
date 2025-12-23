@@ -316,12 +316,22 @@ export default function InitialDataEntry() {
       });
 
       const diff = Math.abs(debitTotal - creditTotal);
+      const isBalanced = diff < 1;
       setTrialBalance({
           debit: debitTotal / 100,
           credit: creditTotal / 100,
           diff: diff / 100,
           isBalanced: diff < 1
       });
+      if (!isBalanced && isBookInitialized) {
+          // 只有在“已启用”状态下改坏了数据，才需要锁定
+          // 如果还没启用，本来就在初始化阶段，不需要锁死
+          localStorage.setItem('TRIAL_BALANCE_ERROR', 'true');
+          // 可以在这里加一个全局提示，告诉用户别乱跑
+          toast.error("试算不平衡！系统已锁定，请调平后再离开。", { duration: 5000 });
+      } else {
+          localStorage.removeItem('TRIAL_BALANCE_ERROR');
+      }
   }, [subjects, auxiliaryEntries, fundAccounts, getSubjectDisplayBalance]);
 
   const toggleExpand = (id: string, e: React.MouseEvent) => { 

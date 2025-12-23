@@ -114,7 +114,15 @@ export default function AccountBookList() {
   const handleSave = async (data: any) => {
     try {
       const isEdit = !!editTarget?.id;
-      
+      const duplicate = accountBooks.find(b => 
+          b.name === data.name &&           // 名字相同
+          b.id !== editTarget?.id           // 且不是当前正在编辑的这个（排除自己）
+      );
+      if (duplicate) {
+          alert('账套名称已存在，请使用其他名称。');
+          // 抛出错误以阻止 Modal 关闭 (假设 Modal 里捕获了错误)
+          throw new Error('账套名称重复');
+      }
       const payload = {
         id: isEdit ? editTarget?.id : undefined,
         name: data.name,

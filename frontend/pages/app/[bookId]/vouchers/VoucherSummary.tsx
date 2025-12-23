@@ -34,6 +34,7 @@ interface VoucherLine {
   creditAmount: number;
   voucherDate: string;
   voucherNumber: string;
+  voucherNumberInt: number; 
 }
 
 export default function VoucherSummary() {
@@ -109,23 +110,26 @@ export default function VoucherSummary() {
 
         // 2. 获取凭证数据 (使用 mockData)
         const vouchers = await getAllVouchers(currentBookId);
+        const approvedVouchers = (vouchers || []).filter((v: any) => v.status === 'approved');
         
         const lineItems: VoucherLine[] = [];
 
         // 展平分录，创建原始明细列表
         (vouchers || []).forEach((voucher: any) => {
+          const vNumStr = String(voucher.voucherNumber || '0');
+          // 提取数字：例如 "记-001" -> 1
+          const vNumInt = parseInt(vNumStr.replace(/\D/g, '') || '0', 10);
           // 只统计已审核的凭证？通常凭证汇总表包含所有或可选。这里暂且包含所有。
           (voucher.lines || []).forEach((line: any) => {
-            const debit = parseFloat(line.debitAmount) || 0;
-            const credit = parseFloat(line.creditAmount) || 0;
             
             lineItems.push({
               subjectCode: line.subjectCode,
               subjectName: line.subjectName,
-              debitAmount: debit,
-              creditAmount: credit,
+              debitAmount: parseFloat(line.debitAmount) || 0,
+              creditAmount: parseFloat(line.creditAmount) || 0,
               voucherDate: voucher.voucherDate,
-              voucherNumber: voucher.voucherNumber // 假设 voucherNumber 是纯数字或 "记-001" 格式
+              voucherNumber: voucher.voucherNumber,
+              voucherNumberInt: vNumInt // ✅ 现在可以使用了
             });
           });
         });
@@ -161,23 +165,21 @@ export default function VoucherSummary() {
         // 2. 凭证号筛选
         // 假设 voucherNumber 格式可能是 "记-1", "1", "001" 等
         // 提取其中的数字部分进行比较
-        const extractNumber = (str: string) => parseInt(str.replace(/\D/g, '') || '0');
-        
-        const itemNum = extractNumber(item.voucherNumber);
-        const fromNum = filters.voucherFrom ? parseInt(filters.voucherFrom) : null;
-        const toNum = filters.voucherTo ? parseInt(filters.voucherTo) : null;
-        
-        if (fromNum !== null && itemNum < fromNum) return false;
-        if (toNum !== null && itemNum > toNum) return false;
+if (filters.voucherFrom) {
+            const fromNum = parseInt(filters.voucherFrom, 10);
+            if (!isNaN(fromNum) && item.voucherNumberInt < fromNum) return false;
+        }
+        if (filters.voucherTo) {
+            const toNum = parseInt(filters.voucherTo, 10);
+            if (!isNaN(toNum) && item.voucherNumberInt > toNum) return false;
+        }
 
         return true;
       });
       
-      const summaryArray = aggregateData(filteredLines);
-      
-      setSummaryData(summaryArray);
+      setSummaryData(aggregateData(filteredLines));
       setIsLoading(false);
-    }, 200);
+    }, 150);
   };
 
   const totalDebit = summaryData.reduce((sum, item) => sum + item.debitAmount, 0);
@@ -247,6 +249,7 @@ export default function VoucherSummary() {
           <div className="col-span-2 space-y-2">
             <Label>凭证号（起）</Label>
             <Input 
+            type="number" 
               placeholder="如：1" 
               value={filters.voucherFrom} 
               onChange={(e) => setFilters({ ...filters, voucherFrom: e.target.value })} 
@@ -256,6 +259,7 @@ export default function VoucherSummary() {
           <div className="col-span-2 space-y-2">
             <Label>凭证号（止）</Label>
             <Input 
+              type="number" 
               placeholder="如：100" 
               value={filters.voucherTo} 
               onChange={(e) => setFilters({ ...filters, voucherTo: e.target.value })} 

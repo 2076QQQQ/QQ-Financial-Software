@@ -1,6 +1,6 @@
-import { useState, useEffect, Fragment } from 'react';
+import { useState, useEffect, Fragment,useRef } from 'react';
 import { useRouter } from 'next/router';
-
+import { toast } from 'sonner';
 import { Plus, Edit, Copy, Trash2, ChevronDown, ChevronRight, CheckCircle, XCircle, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -41,11 +41,12 @@ import {
   batchUpdateVouchers,
   auditVoucher,   
   unauditVoucher,
+  me,
   getAccountBooks // 确保引入了获取账套信息的API
 } from '@/lib/mockData';
 
 import { usePermission } from '@/lib/hooks/usePermission';
-
+const [isProcessing, setIsProcessing] = useState(false);
 interface VoucherLine {
   id: string;
   summary: string;
@@ -74,6 +75,7 @@ interface Voucher {
   createdAt: string;
   updatedAt: string;
   accountBookId: string; // 确保有这个字段
+  latestOperation?: string;
 }
 
 export default function VoucherManagement() {
@@ -90,9 +92,11 @@ export default function VoucherManagement() {
   const [editTarget, setEditTarget] = useState<Voucher | null>(null);
   const [viewMode, setViewMode] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Voucher | null>(null);
+  const [lastClosedPeriod, setLastClosedPeriod] = useState<string>('');
 
   // 账套配置状态：默认开启审核
   const [bookConfig, setBookConfig] = useState({ reviewEnabled: true });
+  const [currentUserName, setCurrentUserName] = useState('未知用户');
 
   const today = new Date();
   const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
@@ -115,6 +119,7 @@ export default function VoucherManagement() {
             if (currentBook) {
                 // 如果 review_enabled 为 false，则不需要审核
                 setBookConfig({ reviewEnabled: currentBook.review_enabled !== false });
+                setLastClosedPeriod(currentBook.lastClosedPeriod || '');
             }
         } catch (e) {
             console.error("获取账套配置失败", e);
@@ -124,7 +129,19 @@ export default function VoucherManagement() {
         fetchSettings();
     }
   }, [router.isReady, currentBookId]);
-
+  useEffect(() => {
+    const initUserData = async () => {
+      try {
+        const userData = await me();
+        if (userData?.user?.name) {
+          setCurrentUserName(userData.user.name); // ✅ 获取真实姓名
+        }
+      } catch (e) {
+        console.error("获取用户信息失败", e);
+      }
+    };
+    initUserData();
+  }, []);
   // --- 2. 加载凭证列表 ---
   const loadVouchers = async () => {
     if (!currentBookId) return;
@@ -204,42 +221,81 @@ export default function VoucherManagement() {
   };
 
   const canBatchDelete = () => {
+    // 1. 如果没有选中任何项，肯定不能删
     const selected = vouchers.filter(v => selectedIds.includes(v.id));
     if (selected.length === 0) return false;
-    
-    // 如果免审核：允许删除所有选中的
-    if (!bookConfig.reviewEnabled) return true;
 
-    // 如果需审核：只能删除未审核的
-    return selected.every(v => v.status === 'draft');
-  };
+    // 2. 【BR2 扩展】结账保护：绝对禁止删除“已结账期间”的凭证
+    // 只要选中项里有一张凭证属于已结账期间，就全都不许删
+    const hasClosedPeriodVoucher = selected.some(v => {
+        const voucherPeriod = v.voucherDate.substring(0, 7);
+        return lastClosedPeriod && voucherPeriod <= lastClosedPeriod;
+    });
+    if (hasClosedPeriodVoucher) return false;
 
+    // 3. 审核状态限制
+    if (!bookConfig.reviewEnabled) {
+        // 分支 A: 免审核模式
+        // 只要没结账，什么状态（通常都是approved）都能删
+        return true;
+    } else {
+        // 分支 B: 需审核模式
+        // 必须所有选中的凭证都是 'draft' (未审核) 状态才能删
+        // 已审核的必须先“反审核”才能删
+        return selected.every(v => v.status === 'draft');
+    }
+};
   // 批量操作处理
   const handleBatchApprove = async () => {
     const targets = vouchers.filter(v => selectedIds.includes(v.id) && v.status === 'draft');
     const updates = targets.map(v => ({
       ...v,
       status: 'approved',
-      reviewer: '当前用户', 
+      reviewer: currentUserName,
+      latestOperation: `${currentUserName} 批量审核`,
       updatedAt: new Date().toLocaleString('zh-CN')
     }));
     await batchUpdateVouchers(updates);
     await loadVouchers();
     setSelectedIds([]);
+    toast.success(`成功审核 ${updates.length} 张凭证`);
   };
 
-  const handleBatchUnapprove = async () => {
+const handleBatchUnapprove = async () => {
+    // 1. 筛选目标
     const targets = vouchers.filter(v => selectedIds.includes(v.id) && v.status === 'approved');
-    const updates = targets.map(v => ({
+    
+    // 2. 结账校验 (过滤掉已结账的)
+    const validTargets = targets.filter(v => {
+        const voucherPeriod = v.voucherDate.substring(0, 7);
+        // 如果没有结账期间，或者凭证日期晚于结账期间，则允许
+        return !lastClosedPeriod || voucherPeriod > lastClosedPeriod;
+    });
+
+    // 如果有被过滤掉的，提示一下
+    if (validTargets.length < targets.length) {
+        toast.warning(`${targets.length - validTargets.length} 张凭证因已结账无法反审核`);
+    }
+
+    if (validTargets.length === 0) return;
+
+    // 3. 执行更新
+    const updates = validTargets.map(v => ({
       ...v,
       status: 'draft',
-      reviewer: undefined, 
+      reviewer: '', // ✅ 清空审核人状态
+      
+      // ✅ 留下操作痕迹
+      latestOperation: `[批量反审核] 操作人: ${currentUserName} 时间: ${new Date().toLocaleString('zh-CN')}`,
+      
       updatedAt: new Date().toLocaleString('zh-CN')
     }));
+    
     await batchUpdateVouchers(updates);
     await loadVouchers();
     setSelectedIds([]);
-  };
+    toast.success(`成功反审核 ${updates.length} 张凭证`);
+};
 
   const handleBatchDelete = async () => {
     if (!confirm(`确定要删除选中的 ${selectedIds.length} 张凭证吗？`)) return;
@@ -284,14 +340,57 @@ export default function VoucherManagement() {
   };
 
   const handleApprove = async (voucher: Voucher) => {
-    await auditVoucher(voucher.id, '当前用户');
+    // 构造操作日志
+    const opLog = `${currentUserName} 审核`;
+    
+    // 调用 API (注意：这里你需要修改 mockData 的 auditVoucher 支持传更多参数，或者直接用 updateVoucher)
+    // 建议直接用 updateVoucher 更灵活，或者修改 auditVoucher
+    const updates = {
+        ...voucher,
+        status: 'approved',
+        reviewer: currentUserName, // ✅ 写入真实姓名
+        latestOperation: opLog,    // ✅ 写入操作日志
+        updatedAt: new Date().toLocaleString('zh-CN')
+    };
+    
+    // 这里假设 auditVoucher 只接受 ID 和 Name，如果不够用，建议直接调 updateVoucher
+    // await auditVoucher(voucher.id, currentUserName); 
+    // 改为通用更新：
+    await updateVoucher(voucher.id, updates);
+    
     await loadVouchers();
+    toast.success("审核成功");
   };
 
+  // 单个反审核 (包含 BR2 结账校验)
   const handleUnapprove = async (voucher: Voucher) => {
-    await unauditVoucher(voucher.id);
-    await loadVouchers();
-  };
+    // 1. 结账校验
+    const voucherPeriod = voucher.voucherDate.substring(0, 7);
+    if (lastClosedPeriod && voucherPeriod <= lastClosedPeriod) {
+        toast.error(`期间 ${voucherPeriod} 已结账，禁止反审核！`);
+        return;
+    }
+
+    // 2. 构造更新数据
+    const updates = {
+        ...voucher,
+        status: 'draft',     // 状态回退为草稿
+        reviewer: '',        // ✅ 正确：清空“当前审核人”，因为现在没人审核它
+        
+        // ✅ 核心修改：在操作日志里记下是谁反审核的
+        latestOperation: `[反审核] 操作人: ${currentUserName} 时间: ${new Date().toLocaleString('zh-CN')}`,
+        
+        updatedAt: new Date().toLocaleString('zh-CN')
+    };
+
+    try {
+        await updateVoucher(voucher.id, updates);
+        await loadVouchers();
+        toast.success("反审核成功");
+    } catch (e) {
+        toast.error("操作失败");
+    }
+};
 
   const handleDelete = async (voucher: Voucher) => {
     await deleteVoucher(voucher.id);
@@ -514,10 +613,48 @@ export default function VoucherManagement() {
           open={showEntryModal}
           onClose={() => setShowEntryModal(false)}
           voucher={editTarget}
+          forceDate={editTarget ? undefined : new Date().toISOString().split('T')[0]} 
           viewMode={viewMode}
           onSave={async (data) => {
             if (!currentBookId) { alert("未找到账套信息"); return; }
+            if (isProcessing) return;
+      
+      // ✅ 2. 上锁
+      setIsProcessing(true);
             try {
+              const lockedDate = new Date().toISOString().split('T')[0];
+              const dataToSave = { ...data, voucherDate: lockedDate };
+              const lines = dataToSave.lines || [];
+              
+              // 1. 检查借方是否有资金科目 (1001/1002)
+              const hasCashOrBankDebit = lines.some((l: any) => 
+                  l.subjectCode && 
+                  (l.subjectCode.startsWith('1001') || l.subjectCode.startsWith('1002')) && 
+                  Number(l.debitAmount) > 0
+              );
+
+              // 2. 检查贷方是否有资金科目 (1001/1002)
+              const hasCashOrBankCredit = lines.some((l: any) => 
+                  l.subjectCode && 
+                  (l.subjectCode.startsWith('1001') || l.subjectCode.startsWith('1002')) && 
+                  Number(l.creditAmount) > 0
+              );
+
+              // 3. ★★★ 关键修复：检查是否包含“非资金”科目 ★★★
+              // 如果凭证里出现了不是 1001 或 1002 的科目，说明这是复合业务（如：提现支付费用、收款等），应当允许。
+              const hasOtherSubjects = lines.some((l: any) => 
+                  l.subjectCode && 
+                  !l.subjectCode.startsWith('1001') && 
+                  !l.subjectCode.startsWith('1002') &&
+                  (Number(l.debitAmount) > 0 || Number(l.creditAmount) > 0)
+              );
+
+              // 拦截条件：
+              // (借方有资金) AND (贷方有资金) AND (没有其他非资金科目参与)
+              if (hasCashOrBankDebit && hasCashOrBankCredit && !hasOtherSubjects) {
+                  alert("❌ 操作禁止 (BR5)：\n\n检测到【纯粹】的现金与银行存款互转业务。\n\n请务必使用【资金管理 -> 内部转账】功能，或通过【出纳日记账】生成凭证，以保证资金流水的完整性。\n\n(注：如果是涉及费用、应收应付的混合业务，请确保已录入相关非资金科目)");
+                  return; // 拦截
+              }
               if (editTarget) {
                 const updatedVoucher = { ...editTarget, ...data, updatedAt: new Date().toLocaleString('zh-CN') };
                 await updateVoucher(editTarget.id, updatedVoucher);
@@ -531,7 +668,10 @@ export default function VoucherManagement() {
             } catch (e: any) {
               // 捕获后端的 403 错误（比如尝试修改系统凭证）
               alert(e.message || '保存失败');
-            }
+            }finally {
+        // ✅ 3. 无论成功失败，最后都要解锁
+        setIsProcessing(false);
+      }
           }}
         />
       )}

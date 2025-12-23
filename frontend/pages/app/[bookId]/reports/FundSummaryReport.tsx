@@ -17,7 +17,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 // 引入 mockData 中的请求函数（确保 mockData.ts 已清理重复代码）
 import { getFundSummaryReport } from '@/lib/mockData';
-
+import { toast } from 'sonner';
 // 定义接口（直接写在这里，避免 mockData 导出问题）
 interface AccountSummary {
   accountId: string;
@@ -27,7 +27,7 @@ interface AccountSummary {
   periodExpense: number;
   endingBalance: number;
 }
-
+const [isLoading, setIsLoading] = useState(false); 
 interface SubjectSummary {
   type: 'income' | 'expense' | 'uncategorized';
   categoryName: string;
@@ -66,6 +66,12 @@ export default function FundSummaryReport() {
   }, [router.isReady, currentBookId]); 
 
   const handleQuery = async () => {
+    if (filters.dateFrom && filters.dateTo && filters.dateTo < filters.dateFrom) {
+        toast.error("结束时间不能早于开始时间");
+        return; // 阻止查询
+    }
+
+    setIsLoading(true);
     if (!currentBookId) return;
     if (!filters.dateFrom || !filters.dateTo) {
       alert('请选择完整的日期范围');
@@ -92,7 +98,10 @@ export default function FundSummaryReport() {
   };
   
   const handleExport = () => {
-      if (accountSummaries.length === 0) return alert('无数据可导出');
+      if (accountSummaries.length === 0) {
+        toast.warning("没有可导出的数据，请先查询");
+        return;
+      }
       
       const csvHeader = "账户名称,期初余额,本期收入,本期支出,期末余额\n";
       const csvBody = accountSummaries.map(e => 

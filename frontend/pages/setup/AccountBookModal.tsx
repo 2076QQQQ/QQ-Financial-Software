@@ -32,6 +32,7 @@ interface AccountBook {
   requiresAudit: boolean;
   isActive: boolean;
   fiscalYearStartMonth?: number;
+  hadRecords?: boolean;
 }
 
 interface AccountBookModalProps {
@@ -80,6 +81,7 @@ export default function AccountBookModal({
   const [selectedYear, setSelectedYear] = useState('');
   const [selectedMonth, setSelectedMonth] = useState('');
   const [selectedDay, setSelectedDay] = useState('');
+  const isPeriodLocked = !!accountBook?.hadRecords;
 
   // 初始化逻辑
   useEffect(() => {
@@ -300,19 +302,19 @@ export default function AccountBookModal({
                     </TooltipProvider>
                 </div>
                 <div className="flex space-x-2">
-                  <Select value={selectedYear} onValueChange={setSelectedYear}>
+                  <Select value={selectedYear} onValueChange={setSelectedYear} disabled={isPeriodLocked} >
                     <SelectTrigger className="bg-white"><SelectValue placeholder="年" /></SelectTrigger>
                     <SelectContent className="max-h-[240px]">
                       {generateYearOptions().map(y => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
                     </SelectContent>
                   </Select>
-                  <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+                  <Select value={selectedMonth} onValueChange={setSelectedMonth} disabled={isPeriodLocked} >
                     <SelectTrigger className="bg-white"><SelectValue placeholder="月" /></SelectTrigger>
                     <SelectContent className="max-h-[240px]">
                       {generateMonthOptions().map(m => <SelectItem key={m} value={String(m).padStart(2,'0')}>{m}</SelectItem>)}
                     </SelectContent>
                   </Select>
-                  <Select value={selectedDay} onValueChange={setSelectedDay} disabled={!selectedYear || !selectedMonth}>
+                  <Select value={selectedDay} onValueChange={setSelectedDay} disabled={!selectedYear || !selectedMonth || isPeriodLocked}>
                     <SelectTrigger className={`bg-white ${(!selectedYear || !selectedMonth) ? 'opacity-50' : ''}`}>
                       <SelectValue placeholder="日" />
                     </SelectTrigger>
@@ -321,8 +323,15 @@ export default function AccountBookModal({
                     </SelectContent>
                   </Select>
                 </div>
+                {isPeriodLocked && (
+    <p className="text-[10px] text-amber-600 mt-1.5 flex items-center gap-1">
+        <Info className="w-3 h-3"/> 
+        该账套已存在业务数据（凭证/日记账），启用日期已被锁定保护。
+    </p>
+)}
                 {errors.startPeriod && <p className="text-xs text-red-500">{errors.startPeriod}</p>}
             </div>
+            
 
             <div className="space-y-2">
                 <Label>会计年度起始月份</Label>

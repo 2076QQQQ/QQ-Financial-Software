@@ -96,6 +96,7 @@ interface VoucherEntryProps {
   onSave: (data: VoucherData) => void; // 保存逻辑交给父组件
   voucher?: any;            // 编辑模式传入数据
   viewMode?: boolean;       // 查看模式
+  forceDate?: string;
 }
 
 // 定义常用税率
@@ -107,15 +108,15 @@ const TAX_RATES = [
     { label: '1% (优惠)', value: 0.01 },
 ];
 
-export default function VoucherEntry({ open, onClose, voucher, viewMode = false, onSave }: VoucherEntryProps) {
+export default function VoucherEntry({ open, onClose, voucher, viewMode, onSave,forceDate }: VoucherEntryProps) {
   // --- 状态管理 ---
   const router = useRouter();
   const { bookId } = router.query;
   
   const [formData, setFormData] = useState<VoucherData>({
+    voucherDate: forceDate || voucher?.voucherDate || new Date().toISOString().split('T')[0],
     voucherType: '记',
     voucherNumber: '自动生成',
-    voucherDate: new Date().toISOString().split('T')[0],
     voucherCode: '',
     attachments: 0,
     lines: [],
@@ -345,8 +346,7 @@ export default function VoucherEntry({ open, onClose, voucher, viewMode = false,
       return toast.error('借贷必须平衡且不为0');
     }
 
-    // 调用父组件的保存
-    onSave(formData);
+    
 
     const dataToSave = {
         ...formData,
@@ -432,8 +432,9 @@ export default function VoucherEntry({ open, onClose, voucher, viewMode = false,
                 <Label className="text-sm font-medium text-gray-700">制单日期</Label>
                 <div className="relative w-42">
                     <div className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none z-10"><Calendar className="w-4 h-4 text-gray-500"/></div>
-                    <Input type="date" value={formData.voucherDate} onChange={(e) => setFormData({ ...formData, voucherDate: e.target.value })} disabled={viewMode} className="h-10 pl-9 w-full bg-white border-gray-300 shadow-sm text-sm" />
+                    <Input type="date" value={formData.voucherDate} onChange={(e) => setFormData({ ...formData, voucherDate: e.target.value })} disabled={viewMode || !!forceDate}  className="h-10 pl-9 w-full bg-white border-gray-300 shadow-sm text-sm" />
                 </div>
+                {forceDate && <p className="text-[10px] text-orange-500 mt-1">* 新增凭证日期自动锁定为当日</p>}
             </div>
 
             <div className="flex flex-col gap-1.5">
