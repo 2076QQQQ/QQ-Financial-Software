@@ -4,7 +4,7 @@
       "id": "user_1766336879168",
       "email": "teacher@demo.com",
       "name": "演示管理员(老师)",
-      "passwordHash": "$2b$10$EixZaYGHNO/4j5jV5n5xO.1c1c1c1c1c1c1c1c1c1c1c1",
+      "passwordHash": "$2b$10$rllVuHrOXouoXdIRuTuRGeRfnZlgj4nBKBJni4GWqCUY10YmDp486",
       "companyId": "comp_1766336879168",
       "role": "Owner",
       "status": "Active"
