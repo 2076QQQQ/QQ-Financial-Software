@@ -86,9 +86,14 @@ interface FundAccount {
   isInitialLocked?: boolean; // 是否锁定余额
   accountBookId?: string; 
 }
+interface Props {
+  onNavigate?: (path: string) => Promise<boolean>;
+}
 
-export default function FundAccountManagement() {
+// ✅ 第二步：修改函数定义，解构 props
+export default function FundAccountManagement({ onNavigate }: Props = {}) {
   const router = useRouter();
+
   const { bookId } = router.query;
   const currentBookId = router.isReady ? (Array.isArray(bookId) ? bookId[0] : bookId) : null;
 
