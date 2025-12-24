@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router'; 
-import { Plus, Edit, Trash2, Search, ArrowRight, Loader2, Wallet, Tag, Info, RefreshCw } from 'lucide-react';
+import { 
+  Plus, Edit, Trash2, Search, ArrowRight, Loader2, 
+  Wallet, Tag, Info, RefreshCw, Lock, AlertTriangle 
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -16,7 +19,7 @@ import {
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { toast } from 'sonner'; // 建议加上 toast 提示
+import { toast } from 'sonner';
 
 // 引入 API
 import { 
@@ -27,11 +30,11 @@ import {
   getAllSubjects,
   updateAccountBook,
   getAllAuxiliaryItems, 
-  getAuxiliaryCategories 
+  getAuxiliaryCategories,
+  getJournalEntries, // 👈 用于检查是否被引用
+  getAccountBooks    // 👈 用于检查账套状态
 } from '@/lib/mockData';
-interface Props {
-  onNavigate?: (path: string) => Promise<boolean>;
-}
+
 // --- 类型定义 ---
 interface Subject {
   id: string;
@@ -77,25 +80,30 @@ interface FundAccount {
   relatedAuxiliaryName?: string; 
 
   status: '启用' | '停用';
-  isReferenced?: boolean;
-  isInitialLocked?: boolean;
+  
+  // 前端计算属性
+  isReferenced?: boolean;    // 是否已有流水
+  isInitialLocked?: boolean; // 是否锁定余额
   accountBookId?: string; 
 }
 
-export default function FundAccountManagement({ onNavigate }: Props) {
+export default function FundAccountManagement() {
   const router = useRouter();
-  const [isNextLoading, setIsNextLoading] = useState(false);
   const { bookId } = router.query;
   const currentBookId = router.isReady ? (Array.isArray(bookId) ? bookId[0] : bookId) : null;
 
+  const [isNextLoading, setIsNextLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'银行存款' | '现金'>('银行存款');
   const [accounts, setAccounts] = useState<FundAccount[]>([]);
   
+  // 依赖数据
   const [availableSubjects, setAvailableSubjects] = useState<Subject[]>([]); 
   const [allAuxiliaryItems, setAllAuxiliaryItems] = useState<AuxiliaryItem[]>([]); 
   const [auxCategories, setAuxCategories] = useState<AuxCategory[]>([]);
 
+  // 状态控制
   const [isLoading, setIsLoading] = useState(false);
+  const [isBookClosed, setIsBookClosed] = useState(false); // 账套是否已结账
   const [searchTerm, setSearchTerm] = useState('');
   
   const [showModal, setShowModal] = useState(false);
@@ -114,23 +122,43 @@ export default function FundAccountManagement({ onNavigate }: Props) {
     status: '启用' as '启用' | '停用'
   });
 
-  // --- 核心逻辑 ---
-
+  // --- 核心逻辑 1: 加载数据与锁定状态计算 ---
   const loadAccounts = async () => {
     if (!currentBookId) return;
     setIsLoading(true);
     try {
-      // 获取所有账户
-      const data = await getAllFundAccounts(currentBookId); 
+      // 并行获取：资金账户、日记账流水、账套信息
+      const [accountsData, journalsData, booksData] = await Promise.all([
+          getAllFundAccounts(currentBookId),
+          getJournalEntries(currentBookId), // 获取所有流水以检查引用
+          getAccountBooks()
+      ]);
       
-      // ★★★ 核心修复：这里做最严格的过滤，只显示属于当前账套的数据 ★★★
-      // 如果后端没有做好隔离，这里是最后一道防线
-      const filteredData = (data || []).filter((a: any) => a.accountBookId === currentBookId);
+      // 1. 检查账套状态
+      const currentBook = (booksData || []).find((b: any) => b.id === currentBookId);
+      const closed = currentBook?.status === 'closed';
+      setIsBookClosed(closed);
+
+      // 2. 处理账户数据
+      const filteredData = (accountsData || [])
+        .filter((a: any) => a.accountBookId === currentBookId)
+        .map((account: FundAccount) => {
+            // 检查是否被引用：如果在日记账中出现了该账户ID，说明已经做过业务了
+            const isReferenced = (journalsData || []).some((j: any) => j.accountId === account.id);
+            
+            return {
+                ...account,
+                isReferenced: isReferenced,
+                // ★★★ 核心严谨逻辑 ★★★
+                // 如果已结账 OR 已被引用，则必须锁定期初余额，防止破坏数据一致性
+                isInitialLocked: closed || isReferenced 
+            };
+        });
       
       setAccounts(filteredData);
     } catch (error) {
-      console.error("Failed to load accounts:", error);
-      toast.error("加载资金账户失败");
+      console.error("Failed to load data:", error);
+      toast.error("加载数据失败");
     } finally {
       setIsLoading(false);
     }
@@ -142,6 +170,7 @@ export default function FundAccountManagement({ onNavigate }: Props) {
     }
   }, [router.isReady, currentBookId]);
 
+  // --- 加载下拉菜单依赖 ---
   const loadDependencies = async () => {
     if (!currentBookId) return;
 
@@ -152,8 +181,6 @@ export default function FundAccountManagement({ onNavigate }: Props) {
           getAuxiliaryCategories(currentBookId)
       ]);
       
-      // ★★★ 核心修复：依赖数据（科目、辅助核算）也必须严格按账套过滤 ★★★
-      // 只有 accountBookId 匹配的才允许被选中
       const bookSubjects = (allSubjectsRaw || []).filter((s: any) => s.accountBookId === currentBookId);
       const bookAuxItems = (auxItemsRaw || []).filter((i: any) => i.accountBookId === currentBookId);
       const bookAuxCats = (auxCatsRaw || []).filter((c: any) => c.accountBookId === currentBookId);
@@ -180,12 +207,8 @@ export default function FundAccountManagement({ onNavigate }: Props) {
         })
         .filter((s: any) => {
             const codeStr = String(s.code);
-            // 筛选条件：1.启用 2.末级 3.属于当前账套 4.根据Tab筛选1001/1002
             if (!s.isActive || !s.isLeaf) return false;
-            // 兼容性：有些科目可能没有 accountBookId (旧数据)，这种情况下暂时隐藏或显示需慎重
-            // 这里我们选择只显示明确属于当前账套的科目
             if (s.accountBookId !== currentBookId) return false; 
-
             return activeTab === '银行存款' ? codeStr.startsWith('1002') : codeStr.startsWith('1001');
         })
         .sort((a: any, b: any) => a.code.localeCompare(b.code));
@@ -243,35 +266,29 @@ export default function FundAccountManagement({ onNavigate }: Props) {
     setShowModal(true);
   };
 
+  // --- 核心逻辑 2: 保存与跳转 ---
   const handleSave = async () => {
     if (!currentBookId) return;
 
-    // ✅ 改名：使用 inputName 避免与全局 name 冲突
     const inputName = formData.accountName.trim();
     
     // 基础校验
-    if (!inputName) { toast.error('请输入账户名称'); return; } // 使用 inputName
+    if (!inputName) { toast.error('请输入账户名称'); return; }
     if (!formData.relatedSubjectId) { toast.error('请选择关联会计科目'); return; }
     if (activeTab === '银行存款' && !formData.bankCardNumber.trim()) { toast.error('请输入银行卡号'); return; }
 
-    // ✅ 校验 6a: 编码或名称重复
+    // 重复校验
     const isNameDuplicate = accounts.some(acc => 
-        acc.accountName === inputName && // 使用 inputName
+        acc.accountName === inputName && 
         acc.id !== editTarget?.id 
     );
-    if (isNameDuplicate) {
-        toast.error("账户名称已存在，请重新输入");
-        return;
-    }
+    if (isNameDuplicate) { toast.error("账户名称已存在，请重新输入"); return; }
 
     const isCodeDuplicate = accounts.some(acc => 
         acc.accountCode === formData.accountCode && 
         acc.id !== editTarget?.id
     );
-    if (isCodeDuplicate) {
-        toast.error("账户编码已存在，请重新输入");
-        return;
-    }
+    if (isCodeDuplicate) { toast.error("账户编码已存在，请重新输入"); return; }
 
     const selectedSubject = availableSubjects.find(s => s.id === formData.relatedSubjectId);
     
@@ -284,16 +301,33 @@ export default function FundAccountManagement({ onNavigate }: Props) {
 
     const selectedAuxItem = allAuxiliaryItems.find(i => i.id === formData.relatedAuxiliaryId);
 
+    // ★★★ 变动检测逻辑 ★★★
+    const newBalance = parseFloat(formData.initialBalance) || 0;
+    let hasBalanceChange = false;
+
+    if (editTarget) {
+        // 编辑模式：只有当余额真的变了，且这个变动是允许的（未锁定），才标记为变动
+        const oldBalance = Number(editTarget.initialBalance) || 0;
+        // 注意：如果 isInitialLocked 为 true，下面的 updateFundAccount 会忽略 initialBalance，所以这里也不用管
+        if (!editTarget.isInitialLocked && Math.abs(newBalance - oldBalance) > 0.01) {
+            hasBalanceChange = true;
+        }
+    } else {
+        // 新增模式：只要录入了不为0的余额，就视为变动
+        if (Math.abs(newBalance) > 0.01) {
+            hasBalanceChange = true;
+        }
+    }
+
     setIsSaving(true);
     try {
-      // ★★★ 核心修复：写入时强制带入 accountBookId ★★★
       const payload = {
         accountType: activeTab, 
         accountCode: formData.accountCode, 
         accountName: formData.accountName,
         bankCardNumber: activeTab === '银行存款' ? formData.bankCardNumber : undefined,
         
-        initialBalance: parseFloat(formData.initialBalance) || 0,
+        initialBalance: newBalance,
         initialDate: formData.initialDate,
         
         relatedSubjectId: formData.relatedSubjectId,
@@ -304,23 +338,33 @@ export default function FundAccountManagement({ onNavigate }: Props) {
         relatedAuxiliaryName: selectedAuxItem ? selectedAuxItem.name : null,
 
         status: formData.status,
-        accountBookId: currentBookId // 写入数据库的关键字段
+        accountBookId: currentBookId 
       };
 
       if (editTarget) {
         await updateFundAccount(editTarget.id, {
             ...payload,
+            // 🔒 如果已锁定，强制使用旧数据，防止前端被绕过
             initialBalance: editTarget.isInitialLocked ? editTarget.initialBalance : payload.initialBalance,
             initialDate: editTarget.isInitialLocked ? editTarget.initialDate : payload.initialDate,
         });
-        toast.success("账户已更新");
       } else {
         await addFundAccount(payload, currentBookId);
-        toast.success("账户已创建");
       }
 
-      await loadAccounts(); 
-      setShowModal(false);
+      // ★★★ 智能跳转 ★★★
+      if (hasBalanceChange) {
+          toast.warning("资金期初余额已变更，系统将跳转至【期初数据】进行试算平衡...", { duration: 4000 });
+          setTimeout(() => {
+              // Next.js 相对路径跳转
+              router.push(`/app/${currentBookId}/settings/initial-data`);
+          }, 1500);
+      } else {
+          toast.success(editTarget ? "账户已更新" : "账户已创建");
+          await loadAccounts(); 
+          setShowModal(false);
+      }
+
     } catch (error) {
       console.error("保存失败", error);
       toast.error("保存失败");
@@ -329,27 +373,42 @@ export default function FundAccountManagement({ onNavigate }: Props) {
     }
   };
 
+  // --- 核心逻辑 3: 删除与跳转 ---
   const handleDelete = async (account: FundAccount) => {
-    const hasBalance = Math.abs(Number(account.initialBalance)) > 0;
-    
-    if (account.isReferenced || hasBalance) {
-        toast.error("该账户已被使用（或有期初余额），无法删除，请使用‘编辑’功能将其‘停用’");
+    // 严谨校验
+    if (account.isReferenced) {
+        toast.error("该账户已存在业务流水（日记账），禁止删除！请先删除相关凭证和流水。");
         return;
     }
+    
+    // 余额不为0时的删除警告
+    const hasBalance = Math.abs(Number(account.initialBalance)) > 0;
+    if (hasBalance) {
+       if (!confirm(`该账户有期初余额 ¥${account.initialBalance}。\n删除后可能导致账套不平衡，确定要删除吗？`)) {
+           return;
+       }
+    }
 
-    // ✅ 校验 1b: 状态仍为“启用” (BR5)
     if (account.status === '启用') {
         toast.error("请先将账户状态设为‘停用’后才能删除");
         return;
     }
 
-    // 二次确认
     if (!window.confirm(`确定要物理删除账户 "${account.accountName}" 吗？此操作不可恢复。`)) return;
 
     try {
       await deleteFundAccount(account.id);
-      await loadAccounts(); 
-      toast.success("删除成功");
+      
+      // ★★★ 如果删了有钱的账户，也要去试算平衡 ★★★
+      if (hasBalance) {
+          toast.warning("已删除含有余额的账户，正在跳转至试算平衡页面...", { duration: 3000 });
+          setTimeout(() => {
+              router.push(`/app/${currentBookId}/settings/initial-data`);
+          }, 1500);
+      } else {
+          toast.success("删除成功");
+          await loadAccounts(); 
+      }
     } catch (error) {
       toast.error("删除失败");
     }
@@ -406,7 +465,7 @@ export default function FundAccountManagement({ onNavigate }: Props) {
         <div className="ml-3">
             <AlertTitle className="text-sm font-bold text-blue-800 mb-1">温馨提示</AlertTitle>
             <AlertDescription className="text-sm text-blue-700 leading-relaxed">
-            系统会自动隔离不同账套的资金数据，请放心操作。
+            系统会自动隔离不同账套的资金数据。若账户已有业务发生或账套已结账，期初余额将锁定不可修改。
             </AlertDescription>
         </div>
       </Alert>
@@ -474,8 +533,12 @@ export default function FundAccountManagement({ onNavigate }: Props) {
                         {tabName === '银行存款' && (
                           <TableCell className="font-mono text-gray-500 text-xs">{account.bankCardNumber || '-'}</TableCell>
                         )}
-                        <TableCell className="text-right font-mono text-blue-700 font-medium">
+                        <TableCell className="text-right font-mono text-blue-700 font-medium relative group">
                           ¥{Number(account.initialBalance).toLocaleString('zh-CN', { minimumFractionDigits: 2 })}
+                          {/* 悬停提示：显示锁定状态 */}
+                          {account.isInitialLocked && (
+                              <Lock className="w-3 h-3 text-gray-300 absolute top-1/2 -translate-y-1/2 right-[-15px]" />
+                          )}
                         </TableCell>
                         <TableCell className="text-sm text-gray-600">{account.relatedSubjectName}</TableCell>
                         
@@ -510,7 +573,8 @@ export default function FundAccountManagement({ onNavigate }: Props) {
       variant="ghost" 
       size="icon" 
       onClick={() => handleDelete(account)} 
-      className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-50 transition-colors"
+      // 这里的 disabled 只是视觉上的，实际拦截在 onClick 里的 handleDelete 逻辑中
+      className={`h-8 w-8 transition-colors ${account.isReferenced ? 'text-gray-300 cursor-not-allowed' : 'text-red-500 hover:text-red-700 hover:bg-red-50'}`}
     >
       <Trash2 className="w-4 h-4" />
     </Button>
@@ -551,7 +615,7 @@ export default function FundAccountManagement({ onNavigate }: Props) {
               </div>
             </div>
 
-            {/* 关联科目区域 (核心交互) */}
+            {/* 关联科目区域 */}
             <div className="bg-slate-50 p-4 rounded-lg border border-slate-100 space-y-4 relative">
                <div className="space-y-2">
                   <Label className="text-sm font-semibold text-gray-800">关联会计科目 <span className="text-red-500">*</span></Label>
@@ -568,8 +632,12 @@ export default function FundAccountManagement({ onNavigate }: Props) {
                               relatedAuxiliaryId: '' 
                           });
                       }}
+                      // 如果已经发生了业务，禁止修改科目，否则账就乱了
+                      disabled={editTarget?.isInitialLocked}
                   >
-                    <SelectTrigger className="bg-white h-9"><SelectValue placeholder="请选择对应科目" /></SelectTrigger>
+                    <SelectTrigger className={`bg-white h-9 ${editTarget?.isInitialLocked ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                        <SelectValue placeholder="请选择对应科目" />
+                    </SelectTrigger>
                     <SelectContent>
                       {availableSubjects.map((s) => (
                         <SelectItem key={s.id} value={s.id}>
@@ -580,7 +648,7 @@ export default function FundAccountManagement({ onNavigate }: Props) {
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-gray-400">
-                      只能选择当前账套下的末级科目。
+                      {editTarget?.isInitialLocked ? "账户已有业务发生或账套已结账，禁止修改科目。" : "只能选择当前账套下的末级科目。"}
                   </p>
                 </div>
 
@@ -593,8 +661,12 @@ export default function FundAccountManagement({ onNavigate }: Props) {
                       </Label>
                       
                       <div className="flex gap-2">
-                          <Select value={formData.relatedAuxiliaryId} onValueChange={(v) => setFormData({ ...formData, relatedAuxiliaryId: v })}>
-                            <SelectTrigger className={`bg-white h-9 focus:ring-indigo-500 ${!formData.relatedAuxiliaryId ? 'border-red-300' : 'border-indigo-200'}`}>
+                          <Select 
+                            value={formData.relatedAuxiliaryId} 
+                            onValueChange={(v) => setFormData({ ...formData, relatedAuxiliaryId: v })}
+                            disabled={editTarget?.isInitialLocked}
+                          >
+                            <SelectTrigger className={`bg-white h-9 focus:ring-indigo-500 ${!formData.relatedAuxiliaryId ? 'border-red-300' : 'border-indigo-200'} ${editTarget?.isInitialLocked ? 'opacity-50' : ''}`}>
                                 <SelectValue placeholder={`请选择归属的${requiredAuxCategoryName}`} />
                             </SelectTrigger>
                             <SelectContent>
@@ -627,11 +699,33 @@ export default function FundAccountManagement({ onNavigate }: Props) {
               </div>
             )}
 
-            {/* 期初数据 */}
+            {/* 期初数据区域 (严谨控制) */}
             <div className="grid grid-cols-2 gap-4 pt-2">
-              <div className="space-y-1.5">
-                <Label className="text-xs text-gray-500">期初余额</Label>
-                <Input type="number" className="h-9 font-mono" value={formData.initialBalance} onChange={(e) => setFormData({ ...formData, initialBalance: e.target.value })} disabled={editTarget?.isInitialLocked} />
+              <div className="space-y-1.5 relative">
+                <Label className="text-xs text-gray-500">
+                    期初余额 
+                    {editTarget?.isInitialLocked && <span className="text-red-500 ml-1 text-[10px]">(已锁定)</span>}
+                </Label>
+                <div className="relative">
+                    <Input 
+                        type="number" 
+                        className={`h-9 font-mono ${editTarget?.isInitialLocked ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`} 
+                        value={formData.initialBalance} 
+                        onChange={(e) => setFormData({ ...formData, initialBalance: e.target.value })} 
+                        // ✅ 这里的 disabled 是真正生效的
+                        disabled={editTarget?.isInitialLocked} 
+                    />
+                    {editTarget?.isInitialLocked && (
+                        <div className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400">
+                            <Lock className="w-3.5 h-3.5"/>
+                        </div>
+                    )}
+                </div>
+                {/* 业务解释文案 */}
+                <p className="text-[10px] text-gray-400 leading-tight">
+                    注：仅录入<span className="font-bold">建账日</span>当天的余额。<br/>
+                    如果是<span className="text-blue-600">年中新开户</span>，请填 0，并通过“内部转账”或“凭证”录入资金。
+                </p>
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs text-gray-500">启用日期</Label>
